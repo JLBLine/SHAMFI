@@ -485,3 +485,16 @@ def get_fits_info(fitsfile,edge_pad=False):
     convert2pixel = solid_pixel/solid_beam
 
     return data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel
+
+def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2):
+    sums = []
+    for index,n1 in enumerate(n1s):
+        val = coeffs[index]*sum(abs(gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)))
+        sums.append(sum)
+
+    sums = array(sums)
+
+
+    order = argsort(sums)[::-1][:num_coeffs]
+    print(order)
+    return n1s[order],n2s[order],coeffs[order]

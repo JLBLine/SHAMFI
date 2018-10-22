@@ -116,6 +116,8 @@ if __name__ == '__main__':
     n2s = array(n2s)
     coeffs = array(coeffs)
 
+    # compress_coeffs(n1s,n2s,coeffs)
+
     ext = 1.5
     ras = linspace(ext,-ext,400)
     decs = linspace(-ext,ext,400)
