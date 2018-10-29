@@ -76,7 +76,7 @@ if __name__ == '__main__':
     # pa = 0.0
 
     betas = array([4.0])
-    nmaxes = arange(1,51)
+    nmaxes = arange(1,4)
 
     fit_space = zeros((len(betas),len(nmaxes)))
 
@@ -106,11 +106,13 @@ if __name__ == '__main__':
             fit_space[b_ind,n_ind] = diff.sum()
 
     fig = plt.figure(figsize=(10,10))
-    ax1 = fig.add_subplot(111)
+    ax1 = fig.add_subplot(111,yscale='log')
 
     # im = ax1.imshow(fit_space,extent=[nmaxes[0],nmaxes[-1],betas[0],betas[-1]])
 
     ax1.plot(nmaxes,fit_space[0,:])
+
+    ax1.grid()
 
     ax1.set_xlabel('nmax')
     ax1.set_ylabel('Diff')

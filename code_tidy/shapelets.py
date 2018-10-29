@@ -36,7 +36,7 @@ def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None):
 
     gauss = exp(-0.5*(array(xrot)**2+array(yrot)**2))
     norm = 1.0 / sqrt(pow(2,n1+n2)*pi*b1*b2*factorial(n1)*factorial(n2))
-    # norm = 1.0 / sqrt(pow(2,n1+n2)*pow(pi,2)*factorial(n1)*factorial(n2))
+    # norm = 1.0 / sqrt(pow(2,n1+n2)*pi*factorial(n1)*factorial(n2))
 
     h1 = eval_hermite(n1,xrot)
     h2 = eval_hermite(n2,yrot)
@@ -193,6 +193,10 @@ def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=Non
 
 
     flux = sum(fitted_model)*convert2pixel
+    # flux = fitted_model.max()*convert2pixel
+
+
+
     major, minor = (b1 / D2R)*60, (b2 / D2R)*60
     pa /= D2R
 
@@ -209,7 +213,7 @@ def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=Non
     #     if coeff < 0:
     #         pass
     #     else:
-        outfile.write("COEFF %.1f %.1f %.8f\n" %(n1s[index],n2s[index],coeff))
+        outfile.write("COEFF %.1f %.1f %.12f\n" %(n1s[index],n2s[index],coeff/flux))
 
     outfile.write('ENDSOURCE')
     outfile.close()
@@ -477,7 +481,9 @@ def get_fits_info(fitsfile,edge_pad=False):
         bmaj = float(header['BMAJ'])
         bmin = float(header['BMIN'])
     except:
-        exit('No BMAJ,BMIN data in header - exiting')
+        print('No BMAJ,BMIN data in header')
+        bmaj,bmin = 0.0164693005365819, 0.0137768431528883
+        print('Assuming BMAJ,BMIN = %.3f,%.3f' %(bmaj,bmin))
 
     solid_beam = (pi*bmaj*bmin) / (4*log(2))
     solid_pixel = abs(float(header['CDELT1'])*float(header['CDELT2']))
@@ -489,12 +495,28 @@ def get_fits_info(fitsfile,edge_pad=False):
 def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2):
     sums = []
     for index,n1 in enumerate(n1s):
-        val = coeffs[index]*sum(abs(gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)))
-        sums.append(sum)
+        val = sum(abs(coeffs[index]*gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)))
+        sums.append(val)
 
     sums = array(sums)
 
 
-    order = argsort(sums)[::-1][:num_coeffs]
-    print(order)
-    return n1s[order],n2s[order],coeffs[order]
+    order = argsort(sums)[::-1]
+    order_high = order[:num_coeffs]
+    order_low = order[num_coeffs:]
+
+    fig = plt.figure(figsize=(7,7))
+    ax = fig.add_subplot(111)
+    ax.plot(sums[order],label='All')
+
+
+    ax.plot(sums[order_high],'o',linestyle='none',label='Selected')
+
+
+    ax.set_xlabel('rank')
+    ax.set_ylabel('value')
+    fig.savefig('rank_order.png')
+    plt.close()
+
+    #,n1s[order_low],n2s[order_low],coeffs[order_low],
+    return n1s[order_high],n2s[order_high],coeffs[order_high],order_high

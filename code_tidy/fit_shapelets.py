@@ -50,43 +50,76 @@ if __name__ == '__main__':
     nmax = args.nmax
 
 
-    edge_pad = 100
-    data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel = get_fits_info(args.fits_file,edge_pad=100)
+    edge_pad = 0
+    data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel = get_fits_info(args.fits_file,edge_pad=edge_pad)
+
+    print(convert2pixel)
+
+    # data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel = get_fits_info(args.fits_file)
+
+    # flat_data *= convert2pixel
+    # data *= convert2pixel
 
 
-    xlow = 140 + edge_pad
-    xhigh = 860 + edge_pad
-    ylow = 300 + edge_pad
-    yhigh = 800 + edge_pad
+    # xlow = 140 + edge_pad
+    # xhigh = 860 + edge_pad
+    # ylow = 300 + edge_pad
+    # yhigh = 800 + edge_pad
+    #
+    # new_data = zeros(data.shape)
+    # new_data[ylow:yhigh,xlow:xhigh] = data[ylow:yhigh,xlow:xhigh]
+    # data = new_data
 
-    new_data = zeros(data.shape)
-    new_data[ylow:yhigh,xlow:xhigh] = data[ylow:yhigh,xlow:xhigh]
-    data = new_data
-
-    flux_cut = 0.1
+    flux_cut = 0.0
     data[data < flux_cut] = 0
-    flat_data = data.flatten()
-    flux_cut = 0
+    # flat_data = data.flatten()
+    # flux_cut = 0
+
+
+    ra_cent_off,dec_cent_off,ra_ind,dec_ind = find_image_centre_celestial(ras=ras,decs=decs,flat_data=flat_data)
+
+    dec_ind = floor(dec_ind / data.shape[0])
+
+    print(ra_ind,dec_ind)
+
+    hdu = fits.open(args.fits_file)
+    wcs = WCS(hdu[0].header)
+    try:
+        ra_cent,dec_cent,meh1,meh2 = wcs.wcs_pix2world(ra_ind-edge_pad,dec_ind-edge_pad,0,0,0)
+    except:
+        ra_cent,dec_cent = wcs.wcs_pix2world(ra_ind-edge_pad,dec_ind-edge_pad,0)
+    # print(ra_cent/15.0,dec_cent)
+    ras -= ra_cent_off
+    decs -= dec_cent_off
+
+    # print(ra_cent,ra_cent_off)
+    # print(dec_cent,dec_cent_off)
+
 
 
     b1 = (args.b1 / 60.0)*D2R
     b2 = (args.b2 / 60.0)*D2R
 
-    pa = -77*D2R
-    # pa = 0.0
+    # pa = -77*D2R
+    pa = 0.0
     xrot,yrot = radec2xy(ras,decs,pa,b1,b2)
-
 
     n1s, n2s, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2)
     fitted_coeffs = linear_solve(flat_data=flat_data,A_shape_basis=A_shape_basis)
 
     # minco(flat_data,b1,b2,n1s,n2s,xrot,yrot,fitted_coeffs)
+    num_coeffs = 100
+    n1s,n2s,fitted_coeffs,order = compress_coeffs(n1s,n2s,fitted_coeffs,num_coeffs,xrot,yrot,b1,b2)
 
-    fit_data = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis)
+    fit_data = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis[:,order])
 
     if args.no_srclist:
         pass
     else:
+        # ra_cent += ra_cent_off / D2R
+        # dec_cent += dec_cent_off / D2R
+
+
         save_srclist(save_tag=save_tag, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
             fitted_model=fit_data, ra_cent=ra_cent, dec_cent=dec_cent, freq=args.freq, pa=pa, convert2pixel=convert2pixel)
 
