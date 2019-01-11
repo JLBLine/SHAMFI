@@ -6,135 +6,20 @@ from scipy.special import factorial,eval_hermite
 from astropy.io import fits
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.axes import Axes
-
-D2R = pi/180.
-    
-def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
-    divider = make_axes_locatable(ax)
-    if top == True:
-        cax = divider.append_axes("top", size="5%", pad=0.05,axes_class=Axes)
-        cbar = fig.colorbar(im, cax = cax,orientation='horizontal')
-        cax.xaxis.set_ticks_position('top')
-        cax.xaxis.set_label_position('top')
-    else:
-        cax = divider.append_axes("right", size="5%", pad=0.05,axes_class=Axes)
-        cbar = fig.colorbar(im, cax = cax)
-    if label:
-        cbar.set_label(label)
-
-
-def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None):
-    '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
-    at the given coords xrot,yrot
-    b1,b2,xrot,yrot should be in radians'''
-
-    ##TODO at some point fold in a PA rotation
-
-    gauss = exp(-0.5*(array(xrot)**2+array(yrot)**2))
-    norm = sqrt(pow(2,n1+n2)*pi*b1*b2*factorial(n1)*factorial(n2))
-
-    h1 = eval_hermite(n1,xrot)
-    h2 = eval_hermite(n2,yrot)
-        
-    return gauss/norm*h1*h2
-
-
-def gen_A_shape_matrix(xrot=None,yrot=None,nmax=None,b1=None,b2=None):
-    n1s = []
-    n2s = []
-    for n1 in arange(nmax+1):
-        for n2 in range(nmax-n1+1):
-            ##If the norm factor is tiny going to have problems - 
-            ##sky if we get issues
-            norm = sqrt(pow(2,n1+n2)*pi*b1*b2*factorial(n1)*factorial(n2))
-            
-            if norm == 0.0 or isnan(norm) == True:
-                print("Skipped n1=%d, n2=%d, normalisation factor is too small" %(n1,n2))
-            else:
-                n1s.append(n1)
-                n2s.append(n2)
-                
-                
-    n1s = array(n1s)
-    n2s = array(n2s)
-    print('Number of coefficients to fit is', len(n1s))
-
-    A_shape_basis = zeros((len(xrot),len(n1s)))
-    for index,n1 in enumerate(n1s):
-        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)
-        
-    return n1s, n2s, A_shape_basis
-        
-
-def linear_solve(image_data=None,A_shape_basis=None):
-    '''Fit the image_data using the given A_shape_basis matrix
-    Essentially solving for x in the equation Ax = b where:
-    A = A_shape_basis
-    b = the image data
-    x = coefficients for the basis functions in A
-    
-    returns: the fitted coefficients in an array'''
-    
-    flat_data = image_data.flatten()
-    flat_data.shape = (len(flat_data),1)
-    shape_coeffs,resid,rank,s = linalg.lstsq(A_shape_basis,flat_data)
-    return shape_coeffs
-   
-def fitted_model(coeffs=None,A_shape_basis=None):
-    '''Generates the fitted shapelet model for the given coeffs
-    and A_shape_basis'''
-    return matrix(A_shape_basis)*matrix(coeffs)
-
-def jenny_style_save(save_tag, nmax, n1s, n2s, fitted_coeffs, b1, b2, ra_cent, dec_cent):
-    save_info = empty((len(n1s),3))
-    save_info[:,0] = n1s
-    save_info[:,1] = n2s
-    save_info[:,2] = fitted_coeffs[:,0]
-    
-    num_coeffs = int(0.5*(nmax+1)*(nmax+2))
-    
-    savetxt('%s_%dcoeffs.txt' %(save_tag,num_coeffs),save_info)
-    
-    PA = 0.0
-    
-    outfile = open('%s_paras.txt' %(save_tag),'w+')
-    outfile.write('%.6f\n' %ra_cent)
-    outfile.write('%.6f\n' %dec_cent)
-    outfile.write('%.6f\n' %((b1 / D2R)*60))
-    outfile.write('%.6f\n' %((b2 / D2R)*60))
-    outfile.write('%.6f\n' %PA)
-    
-    outfile.close()
-    
-def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=None, b1=None, b2=None, fitted_model=None, ra_cent=None, dec_cent=None, freq=None):
-    '''Take the fitted parameters and creates and RTS style srclist with them'''
-    
-    
-    flux = sum(fitted_model)
-    PA = 0.0
-    major, minor = (b1 / D2R)*60, (b2 / D2R)*60
-    
-    
-    outfile = open('srclist_%s.txt' %(save_tag),'w+')
-    outfile.write('SOURCE %s %.6f %.6f\n' %(save_tag,ra_cent/15.0,dec_cent))
-    outfile.write("FREQ %.2fe+6 %.5f 0 0 0\n" %(freq,flux))
-    outfile.write("SHAPELET %.8f %.8f %.8f\n" %(PA,major,minor))
-    
-    for index,coeff in enumerate(fitted_coeffs):
-        outfile.write("COEFF %.1f %.1f %.8f\n" %(n1s[index],n2s[index],coeff))
-    
-    outfile.write('ENDSOURCE')
-    outfile.close()
-    
+import math as m
+from math import atan2
+from numpy import abs as np_abs
+from astropy.wcs import WCS
+from shapelets import *
 
 if __name__ == '__main__':
-    
+
     import argparse
     parser = argparse.ArgumentParser(description="A script to fit a shapelet model consistent with the RTS")
 
     parser.add_argument('--just_plot', default=False, action='store_true',
                         help='Default behaviour is to fit a shapelet model to --fits_file. If just plotting pass this to switch off fitting')
-    
+
     parser.add_argument('--no_srclist', default=False, action='store_true',
                         help='Default behaviour is to create an RTS style srclist - add this to switch off')
 
@@ -149,103 +34,125 @@ if __name__ == '__main__':
 
     parser.add_argument('--nmax', default=31,type=int,
                         help='Maximum value of n1 to include in the basis functions - current maximum possible in the RTS is 31\n (The bigger the n1, the higher the resolution of the fitted model)')
-    
+
     parser.add_argument('--save_tag', default='model',
                         help='A tag to name the outputs with - defaults to "model"')
-    
+
     parser.add_argument('--plot_lims', default=False,
                     help='Flux limits for the plot - enter as vmin,vmax. Default is min(image),max(image)')
-    
+
     parser.add_argument('--freq', default=False,type=float,
                     help='Frequency (MHz) to put in the srclist')
 
+    parser.add_argument('--already_jy_per_pixel', default=False, action='store_true',
+                        help='Add to NOT convert pixels from Jy/beam into Jy/pixel')
+
+    parser.add_argument('--edge_pad', default=100,type=int,
+                        help="By default, add empty pixels outside image to stop fitting artefacts outside the desired image - defaults to 100 pixels. Set to desired amount using --edge_pad=number. To swich off, set --edge_pad=0" )
+
+    parser.add_argument('--num_coeffs', default=100,type=int,
+                        help="Refit using the most significant fitted basis functions, up to num_coeffs. Defaults to 100, change using --num_coeffs=integer" )
+
     args = parser.parse_args()
-    
+
     save_tag = args.save_tag
     nmax = args.nmax
 
+
+    edge_pad = args.edge_pad
+    data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel,ra_reso,dec_reso = get_fits_info(args.fits_file,edge_pad=edge_pad,freq=args.freq)
+
+    if not args.already_jy_per_pixel:
+        flat_data *= convert2pixel
+        data *= convert2pixel
+
+    print('Sum of flux in data is %.2f' %(sum(flat_data)))
+
+    ##TODO? Add in flux cut option for fitting
+    ##TODO don't fit negative flux is good I think?
+    # flux_cut = 0.0
+    # data[data < flux_cut] = 0
+
+    ra_cent_off,dec_cent_off,ra_ind,dec_ind = find_image_centre_celestial(ras=ras,decs=decs,flat_data=flat_data)
+
+    dec_ind = floor(dec_ind / data.shape[0])
+
     hdu = fits.open(args.fits_file)
-    header = hdu[0].header
+    wcs = WCS(hdu[0].header)
+    try:
+        ra_cent,dec_cent,meh1,meh2 = wcs.wcs_pix2world(ra_ind-edge_pad,dec_ind-edge_pad,0,0,0)
+    except:
+        ra_cent,dec_cent = wcs.wcs_pix2world(ra_ind-edge_pad,dec_ind-edge_pad,0)
+    ras -= ra_cent_off
+    decs -= dec_cent_off
 
-    ras = (arange(int(header['NAXIS1'])) - int(header['CRPIX1']))*float(header['CDELT1'])
-    decs = (arange(int(header['NAXIS2'])) - int(header['CRPIX2']))*float(header['CDELT2'])
-    
-    
-    if len(hdu[0].data.shape) == 2:
-        data = hdu[0].data
-    elif len(hdu[0].data.shape) == 3:
-        data = hdu[0].data[0,:,:]
-    elif len(hdu[0].data.shape) == 4:
-        data = hdu[0].data[0,0,:,:]
-
-    ras_mesh,decs_mesh = meshgrid(ras,decs)
-    ras,decs = ras_mesh.flatten(),decs_mesh.flatten()
-    
-    ras *= D2R
-    decs *= D2R
-    
+    ##Scale beta params in radian
     b1 = (args.b1 / 60.0)*D2R
     b2 = (args.b2 / 60.0)*D2R
-    
-    ##This combination of b1,b2,ra,dec and rotation
-    ##makes this consistent with the RTS
-    
-    x = ras / b2
-    y = decs / b1
-    
-    ##TODO - use this code to introduce PA rotations
-    angle = pi/2
-    xrot = x*cos(angle) + y*sin(angle)
-    yrot = -x*sin(angle) + y*cos(angle)
-    
-    n1s, n2s, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2)
 
-    fitted_coeffs = linear_solve(image_data=data,A_shape_basis=A_shape_basis)
-    
-    fit_data = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis)
-    
-    #print(fit_data.max(),fit_data.min(),sum(fit_data))
-    #print(data.max(),data.min(),sum(data))
-    
-    #jenny_style_save(save_tag, nmax, n1s, n2s, fitted_coeffs, b1, b2, float(header['CRVAL1']), float(header['CRVAL2']))
-    
+    #TODO - setup PA fitting
+    pa = 0.0
+    xrot,yrot = radec2xy(ras,decs,pa,b1,b2)
+
+    ##Does a fit using all possible basis functions up to nmax
+    n1s, n2s, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2)
+    fitted_coeffs = linear_solve(flat_data=flat_data,A_shape_basis=A_shape_basis)
+
+    ##Creates a model of the fully fitted coeffs and a matching srclist
+    fit_data_full = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis)
     if args.no_srclist:
         pass
     else:
-        save_srclist(save_tag=save_tag, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2, 
-            fitted_model=fit_data, ra_cent= float(header['CRVAL1']), dec_cent=float(header['CRVAL2']), freq=args.freq)
-    
+        pix_area = ra_reso*dec_reso
+        save_srclist(save_tag=save_tag+'_ncoeffs_full', nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
+            fitted_model=fit_data_full, ra_cent=ra_cent, dec_cent=dec_cent, freq=args.freq, pa=pa,
+            pix_area=pix_area)
+
+
+    ##Sort the basis functions by highest ranking, and return to top num_coeffs
+    n1s_compressed,n2s_compressed,fitted_coeffs_compressed,order = compress_coeffs(n1s,n2s,fitted_coeffs,args.num_coeffs,xrot,yrot,b1,b2)
+
+    A_shape_basis_compressed = gen_reduced_A_shape_matrix(n1s=n1s_compressed,n2s=n2s_compressed,xrot=xrot,yrot=yrot,b1=b1,b2=b2)
+    fitted_coeffs_compressed = linear_solve(flat_data=flat_data,A_shape_basis=A_shape_basis_compressed)
+    fit_data_compressed = fitted_model(coeffs=fitted_coeffs_compressed,A_shape_basis=A_shape_basis_compressed)
+
+    if args.no_srclist:
+        pass
+    else:
+        pix_area = ra_reso*dec_reso
+        save_srclist(save_tag=save_tag+'_ncoeffs%03d' %len(n1s_compressed), nmax=nmax, n1s=n1s_compressed, n2s=n2s_compressed, fitted_coeffs=fitted_coeffs_compressed, b1=b1, b2=b2,
+            fitted_model=fit_data_compressed, ra_cent=ra_cent, dec_cent=dec_cent, freq=args.freq, pa=pa,
+            pix_area=pix_area)
+
     fig = plt.figure(figsize=(10,10))
 
     ax1 = fig.add_subplot(221)
-    data.shape = ras_mesh.shape
-    
-    if args.plot_lims:
-        vmin,vmax = map(float,args.plot_lims.split(','))
-        im1 = ax1.imshow(data,origin='lower',vmin=vmin,vmax=vmax)
-    else:
-        im1 = ax1.imshow(data,origin='lower')
-    add_colourbar(fig=fig,im=im1,ax=ax1)
-    ax1.set_title('Data')
-
     ax2 = fig.add_subplot(222)
-    fit_data.shape = ras_mesh.shape
-    im2 = ax2.imshow(fit_data,origin='lower')
-    add_colourbar(fig=fig,im=im2,ax=ax2)
-    ax2.set_title('Fit')
+    ax3 = fig.add_subplot(223)
+    ax4 = fig.add_subplot(224)
 
-    ax3 = fig.add_subplot(212)
     if args.plot_lims:
         vmin,vmax = map(float,args.plot_lims.split(','))
-        im3 = ax3.imshow(data - fit_data,origin='lower',vmin=vmin,vmax=vmax)
-    else:
-        im3 = ax3.imshow(data - fit_data,origin='lower')
-    add_colourbar(fig=fig,im=im3,ax=ax3)
-    ax3.set_title('Residuals')
 
-    for ax in [ax1,ax2,ax3]:
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
+    else:
+        vmin,vmax = False, False
+
+    def do_plot(ax,data,label):
+        if vmin:
+            ax1.imshow(data,origin='lower',vmin=vmin,vmax=vmax)
+        else:
+            im = ax.imshow(data,origin='lower') #,extent=extent,aspect=aspect) #'ras_mesh.shape[0]'
+        add_colourbar(fig=fig,im=im,ax=ax)
+        ax.set_title(label)
+
+    do_plot(ax1,data,'Data')
+
+    fit_data_full.shape = data.shape
+    fit_data_compressed.shape = data.shape
+
+    do_plot(ax2,fit_data_full,'Full fit (%d coeffs)' %len(n1s))
+    do_plot(ax3,fit_data_compressed,'Compressed fit (%d coeffs)' %len(n1s_compressed))
+    do_plot(ax4,data - fit_data_compressed,'Residuals')
 
     fig.tight_layout()
 
