@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from __future__ import print_function,division
 from numpy import *
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.special import factorial,eval_hermite
 from astropy.io import fits
