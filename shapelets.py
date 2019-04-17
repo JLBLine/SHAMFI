@@ -12,8 +12,46 @@ from math import atan2
 from numpy import abs as np_abs
 from astropy.wcs import WCS
 from sys import exit
+import scipy.optimize as opt
+from copy import deepcopy
+from scipy.signal import convolve2d
+from scipy import ndimage
+from scipy.signal import fftconvolve
+import os
 
 D2R = pi/180.
+
+xmax = 250
+n_x = 20001
+x_cent = int(floor(n_x / 2))
+xrange = linspace(-xmax,xmax,n_x)
+xres = xrange[1] - xrange[0]
+
+
+fileloc = os.path.realpath(__file__)
+
+if fileloc[-1] == 'c':
+    fileloc = fileloc.replace('shapelets.pyc', '')
+else:
+    fileloc = fileloc.replace('shapelets.py', '')
+
+
+
+image_shapelet_basis = load('%simage_shapelet_basis.npz' %fileloc)
+basis_matrix = image_shapelet_basis['basis_matrix']
+gauss_array = image_shapelet_basis['gauss_array']
+
+def twoD_Gaussian((x, y), amplitude, xo, yo, sigma_x, sigma_y, theta):
+    '''Model for a 2D gaussian I got from the internet - flattens it to make
+    fitting more straight forward'''
+    xo = float(xo)
+    yo = float(yo)
+    a = (cos(theta)**2)/(2*sigma_x**2) + (sin(theta)**2)/(2*sigma_y**2)
+    b = -(sin(2*theta))/(4*sigma_x**2) + (sin(2*theta))/(4*sigma_y**2)
+    c = (sin(theta)**2)/(2*sigma_x**2) + (cos(theta)**2)/(2*sigma_y**2)
+    g = amplitude*exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo)
+                            + c*((y-yo)**2)))
+    return g.flatten()
 
 def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
     divider = make_axes_locatable(ax)
@@ -27,6 +65,7 @@ def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
         cbar = fig.colorbar(im, cax = cax)
     if label:
         cbar.set_label(label)
+
 def find_image_centre(ls=None,ms=None,flat_data=None):
     power = 4
     l_cent = sum(flat_data**power*ls) / sum(flat_data**power)
@@ -93,57 +132,148 @@ def find_image_centre_celestial(ras=None,decs=None,flat_data=None):
 
     return ra_cent,dec_cent,ra_ind,dec_ind
 
-def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None):
+def gen_shape_basis_direct(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
     '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
     at the given coords xrot,yrot
-    b1,b2,xrot,yrot should be in radians'''
+    b1,b2 should be in radians'''
 
-    this_xrot = xrot
-    this_yrot = yrot
+    this_xrot = deepcopy(xrot)
+    this_yrot = deepcopy(yrot)
 
     gauss = exp(-0.5*(array(this_xrot)**2+array(this_yrot)**2))
+
+    n1 = int(n1)
+    n2 = int(n2)
+
     norm = 1.0 / (sqrt(2**n1*factorial(n1))*sqrt(2**n2*factorial(n2)))
     norm *= 1.0 / (b1 * b2)
 
-    ##This extra sqrt(pi) / 2 makes it all consistent with the RTS
+    #This extra sqrt(pi) / 2 makes it all consistent with the RTS
     norm *= sqrt(pi) / 2
 
-    h1 = eval_hermite(n1,this_xrot)
-    h2 = eval_hermite(n2,this_yrot)
+    if type(convolve_kern) == ndarray:
+        this_xrot.shape = shape
+        this_yrot.shape = shape
+        gauss.shape = shape
 
-    return gauss*norm*h1*h2
+        h1 = eval_hermite(n1,this_xrot)
+        h2 = eval_hermite(n2,this_yrot)
+        basis = gauss*norm*h1*h2
 
-def gen_reduced_A_shape_matrix(n1s=None, n2s=None, xrot=None,yrot=None,b1=None,b2=None):
+        basis = fftconvolve(basis, convolve_kern, 'same')
+        basis = basis.flatten()
+
+    else:
+
+        h1 = eval_hermite(n1,this_xrot)
+        h2 = eval_hermite(n2,this_yrot)
+        basis = gauss*norm*h1*h2
+
+        # basis = gauss*h1*h2*sqrt(pi) / ((sqrt(2**n1*factorial(n1))*sqrt(2**n2*factorial(n2)))*b1*b2*2.0)
+
+    return basis
+
+def interp_basis(xrot=None,yrot=None,n1=None,n2=None):
+    '''Uses basis lookup tables to generate 2D shapelet basis function for given
+    xrot, yrot coords and n1,n2 orders'''
+    xpos = xrot / xres + x_cent
+    xindex = floor(xpos)
+    xlow = basis_matrix[n1,xindex.astype(int)]
+    xhigh = basis_matrix[n1,xindex.astype(int)+1]
+    x_val = xlow + (xhigh-xlow)*(xpos-xindex)
+
+    ypos = yrot / xres + x_cent
+    yindex = floor(ypos)
+    ylow = basis_matrix[n2,yindex.astype(int)]
+    yhigh = basis_matrix[n2,yindex.astype(int)+1]
+    y_val = ylow + (yhigh-ylow)*(ypos-yindex)
+
+    gxpos = xrot / xres + x_cent
+    gxindex = floor(gxpos)
+    gxlow = gauss_array[gxindex.astype(int)]
+    gxhigh = gauss_array[gxindex.astype(int)+1]
+    gx_val = gxlow + (gxhigh-gxlow)*(gxpos-gxindex)
+
+    gypos = yrot / xres + x_cent
+    gyindex = floor(gypos)
+    gylow = gauss_array[gyindex.astype(int)]
+    gyhigh = gauss_array[gyindex.astype(int)+1]
+    gy_val = gylow + (gyhigh-gylow)*(gypos-gyindex)
+
+    return x_val*y_val*gx_val*gy_val
+
+# @profile
+def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
+    '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
+    using lookup tables, at the given coords xrot,yrot
+    b1,b2 should be in radians'''
+
+    ##Do a copy incase we are reshaping to do the convolution
+    this_xrot = deepcopy(xrot)
+    this_yrot = deepcopy(yrot)
+
+    ##Ensure n1,n2 are ints
+    n1 = int(n1)
+    n2 = int(n2)
+
+    norm = 1.0 / (b1 * b2)
+    #This extra sqrt(pi) / 2 makes it all consistent with the RTS
+    norm *= sqrt(pi) / 2
+
+    if type(convolve_kern) == ndarray:
+        this_xrot.shape = shape
+        this_yrot.shape = shape
+        basis = interp_basis(xrot=this_xrot,yrot=this_yrot,n1=n1,n2=n2)
+        basis = fftconvolve(basis, convolve_kern, 'same')
+        basis = basis.flatten()
+
+    else:
+        basis = interp_basis(xrot=this_xrot,yrot=this_yrot,n1=n1,n2=n2)
+
+    return basis*norm
+
+def gen_reduced_A_shape_matrix(n1s=None, n2s=None, xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
 
     A_shape_basis = zeros((len(xrot),len(n1s)))
     for index,n1 in enumerate(n1s):
-        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)
+        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
 
     return A_shape_basis
 
-def gen_A_shape_matrix(xrot=None,yrot=None,nmax=None,b1=None,b2=None):
+# @profile
+def gen_A_shape_matrix(xrot=None,yrot=None,nmax=None,b1=None,b2=None,convolve_kern=False,shape=False):
     n1s = []
     n2s = []
-    for n1 in arange(nmax+1):
-        for n2 in range(nmax-n1+1):
-            ##If the norm factor is tiny going to have problems -
-            ##skip if we get issues
-            # norm = sqrt(pow(2,n1+n2)*pi*b1*b2*factorial(n1)*factorial(n2))
-            norm = sqrt(pow(2,n1+n2)*pow(pi,2)*factorial(n1)*factorial(n2))
 
-            if norm == 0.0 or isnan(norm) == True:
-                print("Skipped n1=%d, n2=%d, normalisation factor is too small" %(n1,n2))
-            else:
-                n1s.append(n1)
-                n2s.append(n2)
+    with errstate(divide='raise',invalid='raise'):
+        for n1 in range(nmax+1):
+            for n2 in range(nmax-n1+1):
+                ##If the norm factor is tiny going to have problems -
+                ##skip if we get issues
+                # norm = sqrt(pow(2,n1+n2)*pi*b1*b2*factorial(n1)*factorial(n2))
+                # norm = sqrt(pow(2,n1+n2)*pow(pi,2)*factorial(n1)*factorial(n2))
+
+                try:
+                    norm = 1.0 / (sqrt(2**n1*factorial(n1))*sqrt(2**n2*factorial(n2)))
+                    norm *= 1.0 / (b1 * b2)
+                    n1s.append(n1)
+                    n2s.append(n2)
+                #
+                except FloatingPointError:
+                    print("Skipped n1=%d, n2=%d, b1=%.7f b2=%.7f problem with normalisation factor is too small" %(n1,n2,b1,b2))
+
+                # print("These nums n1=%d, n2=%d, b1=%.7f b2=%.7f" %(n1,n2,b1,b2))
+                # print(sqrt(2**n2*factorial(n2)))
+                # print(sqrt(2**n1*factorial(n1)))
+                # norm = 1.0 / (sqrt(2**n1*factorial(n1))*sqrt(2**n2*factorial(n2)))
 
     n1s = array(n1s)
     n2s = array(n2s)
-    print('Number of coefficients to fit is', len(n1s))
+    # print('Number of coefficients to fit is', len(n1s))
 
     A_shape_basis = zeros((len(xrot),len(n1s)))
     for index,n1 in enumerate(n1s):
-        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)
+        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
 
     return n1s, n2s, A_shape_basis
 
@@ -173,9 +303,8 @@ def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=Non
     pa=0.0, pix_area=None):
     '''Take the fitted parameters and creates and RTS style srclist with them'''
 
-    # fitted_model *= convert2pixel
     all_flux = sum(fitted_model)
-    print('TOTAL FLUX in fitted model is %.2f' %all_flux)
+    print('TOTAL FLUX in convolved model is %.2f' %all_flux)
 
     ##This scaling removes pixel effects, and sets the model to sum to one -
     ##this way when the RTS creates the model and multiplies by the reported
@@ -187,7 +316,7 @@ def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=Non
     pa /= D2R
 
     outfile = open('srclist_%s.txt' %(save_tag),'w+')
-    outfile.write('SOURCE %s %.6f %.6f\n' %(save_tag[:12],ra_cent/15.0,dec_cent))
+    outfile.write('SOURCE %s %.6f %.6f\n' %(save_tag[:15],ra_cent/15.0,dec_cent))
     outfile.write("FREQ %.2fe+6 %.5f 0 0 0\n" %(freq,all_flux))
     outfile.write("SHAPELET %.8f %.8f %.8f\n" %(pa,major,minor))
 
@@ -243,7 +372,7 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
     elif len(hdu[0].data.shape) == 4:
         data = hdu[0].data[0,0,:,:]
 
-    zero_index = 1
+    zero_index = 0
 
     if edge_pad:
 
@@ -257,9 +386,40 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
         ras = (arange(zero_index,int(header['NAXIS1'])+zero_index) - int(header['CRPIX1']))*float(header['CDELT1'])
         decs = (arange(zero_index,int(header['NAXIS2'])+zero_index) - int(header['CRPIX2']))*float(header['CDELT2'])
 
-    ras_mesh,decs_mesh = meshgrid(ras,decs)
-    ras,decs = ras_mesh.flatten(),decs_mesh.flatten()
 
+    ras_mesh,decs_mesh = meshgrid(ras,decs)
+
+    # if edge_pad:
+    #
+    #     ras = (arange(zero_index,(int(header['NAXIS1'])+edge_pad*2+zero_index)) - (int(header['CRPIX1'])+edge_pad))*float(header['CDELT1'])
+    #     decs = (arange(zero_index,(int(header['NAXIS2'])+edge_pad*2+zero_index)) - (int(header['CRPIX2'])+edge_pad))*float(header['CDELT2'])
+    #     pad_image = zeros((int(header['NAXIS1'])+edge_pad*2,int(header['NAXIS2'])+edge_pad*2))
+    #     pad_image[edge_pad:data.shape[0]+edge_pad,edge_pad:data.shape[1]+edge_pad] = data
+    #     data = pad_image
+    #
+    # else:
+    #
+    #
+    #     wcs = WCS(header)
+    #
+    #     xrange = arange(header['NAXIS1'])
+    #     yrange = arange(header['NAXIS2'])
+    #
+    #     x_mesh,y_mesh = meshgrid(xrange,yrange)
+    #
+    #     if len(hdu[0].data.shape) == 2:
+    #         ras_mesh,decs_mesh = wcs.all_pix2world(x_mesh,y_mesh,0)
+    #     elif len(hdu[0].data.shape) == 3:
+    #         ras_mesh,decs_mesh,meh1 = wcs.all_pix2world(x_mesh,y_mesh,0,0)
+    #     elif len(hdu[0].data.shape) == 4:
+    #         ras_mesh,decs_mesh,meh1,meh2 = wcs.all_pix2world(x_mesh,y_mesh,0,0,0)
+    #
+    #
+    #
+    #     ras_mesh -= header['CRVAL1']
+    #     decs_mesh -= header['CRVAL2']
+
+    ras,decs = ras_mesh.flatten(),decs_mesh.flatten()
     flat_data = data.flatten()
 
     ras *= D2R
@@ -276,7 +436,7 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
         print('Assuming max baseline is 3.0e3')
         print('Assuming BMAJ,BMIN are equal')
         VELC = 299792458.0
-        R2D = 180.0/pi
+        R2D = 180.0 / pi
         baseline = 3e+3
         reso = ((VELC/(freq*1e+6))/baseline)*R2D*0.5
         bmaj = reso
@@ -288,12 +448,12 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
 
     convert2pixel = solid_pixel/solid_beam
 
-    return data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel,abs(float(header['CDELT1'])*D2R),float(header['CDELT2'])*D2R
+    return hdu,data,flat_data,ras,decs,ra_cent,dec_cent,convert2pixel,abs(float(header['CDELT1'])*D2R),float(header['CDELT2'])*D2R
 
-def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2):
+def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2,convolve_kern=False,shape=False):
     sums = []
     for index,n1 in enumerate(n1s):
-        val = sum(abs(coeffs[index]*gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)))
+        val = sum(abs(coeffs[index]*gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)))
         sums.append(val)
 
     sums = array(sums)
@@ -311,3 +471,11 @@ def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2):
     plt.close()
 
     return n1s[order_high],n2s[order_high],coeffs[order_high],order_high
+
+
+def find_resids(data=None,fit_data=None):
+    '''Just finds the sum of squares of the residuals'''
+
+    this_fit = asarray(fit_data).flatten()
+    diffs = (data - this_fit)**2
+    return diffs.sum()
