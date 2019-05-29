@@ -99,10 +99,10 @@ def find_image_centre(ls=None,ms=None,flat_data=None):
 
     return l_cent,m_cent,l_ind,m_ind
 
-def find_image_centre_celestial(ras=None,decs=None,flat_data=None):
+def find_image_centre_celestial(ras=None,decs=None,flat_data=None,good_inds=None):
     power = 4
-    ra_cent = sum(flat_data**power*ras) / sum(flat_data**power)
-    dec_cent = sum(flat_data**power*decs) / sum(flat_data**power)
+    ra_cent = sum(flat_data[good_inds]**power*ras[good_inds]) / sum(flat_data[good_inds]**power)
+    dec_cent = sum(flat_data[good_inds]**power*decs[good_inds]) / sum(flat_data[good_inds]**power)
 
     resolution = abs(ras[1] - ras[0])
     ##Find the difference between the gridded u coords and the desired u

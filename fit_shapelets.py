@@ -69,6 +69,12 @@ if __name__ == '__main__':
         300 to 455 in the y range, enter this on the command line: \
         fit_shapelets.py --exclude_box 0,10,10,20 --exclude_box 100,400,300,455')
 
+    parser.add_argument('--diff_box',default=False,
+        help='Define a box in which to calculate residuals to the fix. Add as x_low,x_high,y_low,y_high')
+
+    parser.add_argument('--fit_box',default=False,
+        help='Only fit shapelets to dat within the designated box. Add as x_low,x_high,y_low,y_high')
+
     args = parser.parse_args()
 
     save_tag = args.save_tag
@@ -82,19 +88,30 @@ if __name__ == '__main__':
 
     y_len,x_len = data.shape
 
-    ##Need to mask out bad pixels here
-    try:
-        avoid_inds = []
-        for box in args.exclude_box:
-            low_x,high_x,low_y,high_y = array(map(int,box.split(','))) + edge_pad
-            for y in range(low_y,high_y+1):
-                for x in range(low_x,high_x+1):
-                    avoid_inds.append(y*x_len + x)
+    if args.fit_box:
+        good_inds = []
+        low_x,high_x,low_y,high_y = array(map(int,args.fit_box.split(','))) + edge_pad
+        for y in range(low_y,high_y+1):
+            for x in range(low_x,high_x+1):
+                good_inds.append(y*x_len + x)
 
-        good_inds = arange(len(flat_data))
-        good_inds = setxor1d(good_inds,avoid_inds)
-    except:
-        good_inds = arange(len(flat_data))
+        good_inds = array(good_inds)
+
+    else:
+
+        ##Need to mask out bad pixels here
+        try:
+            avoid_inds = []
+            for box in args.exclude_box:
+                low_x,high_x,low_y,high_y = array(map(int,box.split(','))) + edge_pad
+                for y in range(low_y,high_y+1):
+                    for x in range(low_x,high_x+1):
+                        avoid_inds.append(y*x_len + x)
+
+            good_inds = arange(len(flat_data))
+            good_inds = setxor1d(good_inds,avoid_inds)
+        except:
+            good_inds = arange(len(flat_data))
 
     print('Sum of flux in data is %.2f' %(sum(flat_data[good_inds])))
 
@@ -103,8 +120,10 @@ if __name__ == '__main__':
     # flux_cut = 0.0
     # data[data < flux_cut] = 0
 
-    ra_cent_off,dec_cent_off,ra_ind,dec_ind = find_image_centre_celestial(ras=ras[good_inds],decs=decs[good_inds],flat_data=flat_data[good_inds])
+    ra_cent_off,dec_cent_off,ra_ind,dec_ind = find_image_centre_celestial(ras=ras,decs=decs,flat_data=flat_data,good_inds=good_inds)
+
     dec_ind = floor(dec_ind / data.shape[0])
+    print(ra_ind,dec_ind,'centre')
 
     ra_mesh = deepcopy(ras)
     ra_mesh.shape = data.shape
@@ -229,15 +248,26 @@ if __name__ == '__main__':
         ##Does a fit using all possible basis functions up to nmax
         n1s, n2s, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2,convolve_kern=rest_gauss_kern,shape=data.shape)
 
-        print(A_shape_basis.shape,A_shape_basis[good_inds,:].shape)
+        # print(A_shape_basis.shape,A_shape_basis[good_inds,:].shape)
 
-
+        print(flat_data[good_inds].shape,A_shape_basis[good_inds,:].shape)
         fitted_coeffs = linear_solve(flat_data=flat_data[good_inds],A_shape_basis=A_shape_basis[good_inds,:])
 
         ##Creates a model of the fully fitted coeffs and a matching srclist
         fit_data_full = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis)
 
-        resid = find_resids(data=flat_data,fit_data=fit_data_full)
+
+        if args.diff_box:
+            diff_inds = []
+            low_x,high_x,low_y,high_y = array(map(int,args.diff_box.split(','))) + edge_pad
+            for y in range(low_y,high_y+1):
+                for x in range(low_x,high_x+1):
+                    diff_inds.append(y*x_len + x)
+            diff_inds = array(diff_inds)
+        else:
+            diff_inds = arange(len(flat_data))
+
+        resid = find_resids(data=flat_data[diff_inds],fit_data=fit_data_full[diff_inds])
         print(resid)
 
         return resid, fit_data_full, fitted_coeffs, n1s, n2s, xrot, yrot
@@ -272,7 +302,7 @@ if __name__ == '__main__':
             #     yrot_matrix[b1_ind,b2_ind] = zeros((num_points,num_points))
 
 
-    print(matrix_plot)
+    # print(matrix_plot)
     best_b1_ind,best_b2_ind = where(matrix_plot == nanmin(matrix_plot))
 
     savez_compressed('%s_grid.npz' %save_tag,matrix_plot=matrix_plot,b1_grid=b1_grid,b2_grid=b2_grid)
@@ -352,7 +382,6 @@ if __name__ == '__main__':
     A_shape_basis_no_conv = gen_reduced_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,b1=b1,b2=b2)
     fitted_coeffs.shape = (len(fitted_coeffs),1)
     fit_data_no_conv = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis_no_conv)
-
 
     def do_plot(ax,data,label):
         if vmin:
