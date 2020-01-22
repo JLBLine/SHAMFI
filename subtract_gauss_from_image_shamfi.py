@@ -2,11 +2,8 @@
 from numpy import *
 from shamfi_lib import *
 from astropy.io import fits
-# from astropy.modeling.models import Gaussian2D
 import matplotlib.pyplot as plt
 from astropy.wcs import WCS
-# from scipy.signal import fftconvolve
-# import scipy.optimize as opt
 import argparse
 
 gitlabel = get_gitlabel()
@@ -94,7 +91,7 @@ with fits.open(fits_file) as hdu:
 
     print('Found %d gaussians, subtracting now' %num_gauss)
 
-    ##Plot the outputs 
+    ##Plot the outputs
     fig = plt.figure(figsize=(10,10))
 
     ##Store results in this class to write them out to srclists
@@ -118,7 +115,8 @@ with fits.open(fits_file) as hdu:
         ##RTS major and minors are std dev, not FWHM
         comp.major = majors[ind]*factor
         comp.minor = minors[ind]*factor
-        source.ras.append(ra)
+        ##RTS is in hours, not deg
+        source.ras.append(ra / 15.0)
         source.decs.append(dec)
         source.flux_lines.append(['FREQ %.5e %.10f 0 0 0' %(freq,int_fluxs[ind])])
         source.component_infos.append(comp)

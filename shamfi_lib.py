@@ -1131,9 +1131,14 @@ def subtract_gauss(data,ind,x,y,major,minor,pa,flux,header,wcs,data_dims,
     low_x = int(round(x - half_width))
     high_x = int(round(x + half_width))
 
+    data_plot = data[low_y:high_y,low_x:high_x]
+    ##Set the same vmin and vmax for data and gauss for easy comparison
+    vmin = data_plot.min()
+    vmax = data_plot.max()
+
     ##Plot the data and the gaussian
-    im1 = ax1.imshow(data[low_y:high_y,low_x:high_x],origin='lower')
-    im2 = ax2.imshow(gauss_subtrac[low_y:high_y,low_x:high_x],origin='lower')
+    im1 = ax1.imshow(data_plot,origin='lower',vmin=vmin,vmax=vmax)
+    im2 = ax2.imshow(gauss_subtrac[low_y:high_y,low_x:high_x],origin='lower',vmin=vmin,vmax=vmax)
 
     ##subtract the gaussian
     data -= gauss_subtrac
