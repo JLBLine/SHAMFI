@@ -39,7 +39,7 @@ if srctype == 'woden':
     all_lines = [lines_base]
     for srclist in srclists[1:]:
         srctype,lines_extra = check_rts_or_woden_get_lines(srclist)
-        num_point,num_gauss,num_shape,num_coeffs = get_woden_comp_nums(lines_base)
+        num_point,num_gauss,num_shape,num_coeffs = get_woden_comp_nums(lines_extra)
 
         tot_num_point += num_point
         tot_num_gauss += num_gauss
