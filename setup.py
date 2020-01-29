@@ -1,39 +1,61 @@
 #! /usr/bin/env python
-"""
-Setup for AegeanTools
-"""
+'''
+Setup for SHAMFI
+'''
 import os
 import sys
-# from setuptools import
-from distutils.command.build_py import build_py
-# from distutils.core import setup
 from setuptools import setup, find_packages
+import setuptools.command.build_py
 from shamfi.git_helper import make_gitdict
 from sys import path
 import json
+import distutils.cmd
+
+
+class GitInfo(distutils.cmd.Command):
+  '''A custom command to create a json file containing SHAMFI git information.'''
+
+  description = 'Create the file "shamfi/shamfi_gitinfo.json" containing git information '
+  user_options = []
+
+  def initialize_options(self):
+    '''Set default values for options (this has to be included for
+    distutils.cmd to work)'''
+    # Each user option must be listed here with their default value.
+    self.git_info = True
+
+  def finalize_options(self):
+    '''Post-process options (this has to be included for
+    distutils.cmd to work)'''
+    if self.git_info:
+        print('Creating file shamfi/shamfi_gitinfo.jsons')
+      # assert os.path.exists(self.pylint_rcfile), (
+      #     'Pylint config file %s does not exist.' % self.pylint_rcfile)
+
+  def run(self):
+    '''Write the shamfi git json file.'''
+    with open(os.path.join(os.path.abspath(os.path.dirname(__file__)),'shamfi', 'shamfi_gitinfo.json'), 'w') as outfile:
+        json.dump(make_gitdict(), outfile)
+
+
+class BuildPyCommand(setuptools.command.build_py.build_py):
+  '''Custom build command to run the gitinfo command during build'''
+
+  def run(self):
+    self.run_command('gitinfo')
+    setuptools.command.build_py.build_py.run(self)
+
 
 def read(fname):
-    """Read a file"""
+    '''Reads a file so we can read the REAMME.'''
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
+##Module requirements
 reqs = ['matplotlib>=2.2.4',
         'scipy>=1.2.2',
         'astropy>=2.0.15',
         'numpy>=1.16.5',
         'progressbar2>=3.38.0']
-
-class my_build_py(build_py):
-    def run(self):
-        # honour the --dry-run flag
-        if not self.dry_run:
-            ##Write a dictionary containing git info to the library
-            ##Copy it to the build directory later
-            with open(os.path.join('shamfi', 'shamfi_gitinfo.json'), 'w') as outfile:
-                json.dump(make_gitdict(), outfile)
-
-        # distutils uses old-style classes, so no super()
-        build_py.run(self)
-
 
 setup(
     name="shamfi",
@@ -51,6 +73,8 @@ setup(
              'scripts/combine_srclists_shamfi.py',
              'scripts/convert_srclists_shamfi.py'],
     python_requires='>=2.7',
-    cmdclass={'build_py': my_build_py},
+    cmdclass={'gitinfo': GitInfo,
+              'build_py': BuildPyCommand,
+              },
     package_data={"shamfi": ["image_shapelet_basis.npz", "shamfi_gitinfo.json"]},
 )

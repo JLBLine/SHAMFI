@@ -2,7 +2,7 @@ from subprocess import check_output
 import os
 import json
 import pkg_resources
-from shamfi import __version__
+from shamfi import __version__,__path__
 
 def get_commandline_output(command_list):
     '''Takes a command line entry separated into list entries, and returns the
@@ -23,7 +23,8 @@ def make_gitdict():
 def get_gitdict():
     '''Get the git dictionary that was created by setup.py and
     grab information from it'''
-    json_loc = pkg_resources.resource_filename("shamfi", "shamfi_gitinfo.json")
+    # json_loc = pkg_resources.resource_filename("shamfi", "shamfi_gitinfo.json")
+    json_loc = os.path.join(__path__[0],"shamfi_gitinfo.json")
 
     with open(json_loc,'r') as json_file:
         git_dict = json.load(json_file)
