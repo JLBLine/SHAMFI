@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 from __future__ import print_function,division
-from shamfi_lib import *
+from shamfi.shamfi_lib import *
 from shamfi.git_helper import *
 import argparse
 from numpy import array,where,arange

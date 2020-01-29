@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from numpy import *
-from shamfi_lib import *
+from shamfi.shamfi_lib import *
+from shamfi.git_helper import *
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from astropy.wcs import WCS
