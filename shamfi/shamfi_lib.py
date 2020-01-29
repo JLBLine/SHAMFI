@@ -18,6 +18,8 @@ import os
 from astropy.modeling.models import Gaussian2D
 from progressbar import progressbar
 from subprocess import check_output
+import pkg_resources
+from shamfi.git_helper import get_gitdict, write_git_header
 
 ##Convert degress to radians
 D2R = pi/180.
@@ -36,31 +38,20 @@ xres = xrange[1] - xrange[0]
 ##convert between FWHM and std dev
 factor = 2. * sqrt(2.*log(2.))
 
-##Find where this file is so we can find the basis functions
-fileloc = os.path.realpath(__file__)
-if fileloc[-1] == 'c':
-    fileloc = fileloc.replace('shamfi_lib.pyc', '')
-else:
-    fileloc = fileloc.replace('shamfi_lib.py', '')
+# ##Find where this file is so we can find the basis functions
+# fileloc = os.path.realpath(__file__)
+# if fileloc[-1] == 'c':
+#     fileloc = fileloc.replace('shamfi_lib.pyc', '')
+# else:
+#     fileloc = fileloc.replace('shamfi_lib.py', '')
 
-##Import the basis functions
-image_shapelet_basis = load('%simage_shapelet_basis.npz' %fileloc)
+##Use package manager to get hold of the basis functions
+basis_path = pkg_resources.resource_filename("shamfi", "image_shapelet_basis.npz")
+
+##Load the basis functions
+image_shapelet_basis = load(basis_path)
 basis_matrix = image_shapelet_basis['basis_matrix']
 gauss_array = image_shapelet_basis['gauss_array']
-
-
-def get_gitlabel():
-    '''Find out what git commit we are working with'''
-    ##Find out where the git repo is, cd in and grab the git label
-    ##TODO do this in a better way
-    fileloc = os.path.realpath(__file__)
-    cwd = os.getcwd()
-    os.chdir(('/').join(fileloc.split('/')[:-1]))
-    gitlabel = check_output(["git", "describe", "--always"],universal_newlines=True).strip()
-    ##Get back to where we were before
-    os.chdir(cwd)
-
-    return gitlabel
 
 def twoD_Gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta):
     '''Model for a 2D gaussian  - flattens it to make
@@ -287,7 +278,7 @@ def fitted_model(coeffs=None,A_shape_basis=None):
 
 def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=None,
     b1=None, b2=None, fitted_model=None, ra_cent=None, dec_cent=None, freq=None,
-    pa=0.0, pix_area=None, gitlabel=None, rts_srclist=True):
+    pa=0.0, pix_area=None,  rts_srclist=True):
     '''Take the fitted parameters and creates an RTS/WODEN style srclist with them'''
 
     all_flux = sum(fitted_model)
@@ -308,7 +299,7 @@ def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=Non
         outfile = open('srclist-woden_%s.txt' %(save_tag),'w+')
 
 
-    outfile.write('##Created with SHAMFI git label %s\n' %gitlabel)
+    write_git_header(outfile)
 
     if rts_srclist:
         outfile.write('SOURCE %s %.6f %.6f\n' %(save_tag[:16],ra_cent/15.0,dec_cent))
@@ -595,7 +586,7 @@ def set_central_pixel_to_zero(popt,ras,decs,ra_range,dec_range,args,edge_pad,dim
     return ra_cent, dec_cent, ras, decs
 
 def save_output_FITS(fitsfile,save_data,data_shape,save_tag,nmax,edge_pad,
-                     len1,len2,convert2pixel,gitlabel):
+                     len1,len2,convert2pixel):
     '''Saves the model into a FITS file, taking into account any edge padding
     that happened, and converting back into Jy/beam'''
 
@@ -609,7 +600,11 @@ def save_output_FITS(fitsfile,save_data,data_shape,save_tag,nmax,edge_pad,
         elif len(hdu[0].data.shape) == 4:
             hdu[0].data[0,0,:,:] = save_data[edge_pad:edge_pad+len1,edge_pad:edge_pad+len2]  / convert2pixel
 
-        hdu[0].header['SHAMFIv'] = gitlabel
+        git_dict = get_gitdict()
+
+        hdu[0].header['SHAMFIv'] = git_dict['describe']
+        hdu[0].header['SHAMFId'] = git_dict['date']
+        hdu[0].header['SHAMFIb'] = git_dict['branch']
 
         hdu.writeto('shamfi_%s_nmax%d_fit.fits' %(save_tag,nmax),overwrite=True)
 
@@ -1012,7 +1007,7 @@ def write_woden_component_as_RTS(lines, outfile, name = False):
         outfile.write('ENDCOMPONENT\n')
 
 
-def write_woden_from_RTS_sources(RTS_sources,outname,gitlabel):
+def write_woden_from_RTS_sources(RTS_sources,outname):
     '''Takes a list of RTS_source classes and uses the to write a WODEN
     style srclist called outname'''
 
@@ -1030,7 +1025,7 @@ def write_woden_from_RTS_sources(RTS_sources,outname,gitlabel):
     num_shape = len(where(all_comp_types == 'SHAPELET')[0])
 
     with open(outname,'w+') as outfile:
-        outfile.write('##Written with SHAMFI commit %s\n' %gitlabel)
+        write_git_header(outfile)
         outfile.write('SOURCE %s P %d G %d S %d %d\n' %(RTS_sources[0].name,
                                 num_point,num_gauss,num_shape,all_shape_coeffs))
 
@@ -1054,11 +1049,11 @@ def write_woden_from_RTS_sources(RTS_sources,outname,gitlabel):
 
         outfile.write('ENDSOURCE')
 
-def write_singleRTS_from_RTS_sources(RTS_sources,outname,gitlabel):
+def write_singleRTS_from_RTS_sources(RTS_sources,outname):
     '''Takes a list RTS_sources containg RTS_source classes, and writes
     them out into a single SOURCE RTS srclist of name outname'''
     with open(outname,'w+') as outfile:
-        outfile.write('##Written with SHAMFI commit %s\n' %gitlabel)
+        write_git_header(outfile)
 
         for source_ind,source in enumerate(RTS_sources):
             for comp_ind,comp_info in enumerate(source.component_infos):

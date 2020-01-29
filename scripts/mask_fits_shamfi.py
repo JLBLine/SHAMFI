@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from astropy.io import fits
 from numpy import *
-from shamfi_lib import add_colourbar,twoD_Gaussian
+from shamfi.shamfi_lib import add_colourbar,twoD_Gaussian
+from shamfi.git_helper import *
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
 import argparse
@@ -109,6 +110,12 @@ for ind,mask in enumerate(masks):
         elif data_shape == 4:
             data = hdu[0].data[0,0,:,:]
             hdu[0].data[0,0,:,:] = fracs[ind]*data
+
+        git_dict = get_gitdict()
+
+        hdu[0].header['SHAMFIv'] = git_dict['describe']
+        hdu[0].header['SHAMFId'] = git_dict['date']
+        hdu[0].header['SHAMFIb'] = git_dict['branch']
 
         hdu.writeto('%s_split%02d.fits' %(args.output_tag,ind+1),overwrite=True)
 

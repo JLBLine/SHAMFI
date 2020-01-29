@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 from __future__ import print_function,division
 from shamfi_lib import *
+from shamfi.git_helper import *
 import argparse
 from numpy import array,where,arange
-
-gitlabel = get_gitlabel()
 
 parser = argparse.ArgumentParser(description="Converts a srclist between RTS or WODEN formats \
                                  Should automatically detect if base catalouge is RTS or WODEN format. \
@@ -53,7 +52,7 @@ else:
 if type == 'woden':
     with open(outname,'w+') as outfile:
 
-        outfile.write('##Combined with SHAMFI commit %s\n' %gitlabel)
+        write_git_header(outfile)
 
         _,name,_,_,_,_,_,_,_ = lines[0].split()
         ##The RTS only allows names up to 16 characters long so clip here
@@ -77,4 +76,4 @@ if type == 'woden':
 elif type == 'rts':
     ##Parse and format the RTS srclist into the RTS_source class
     all_RTS_sources = get_RTS_sources(args.srclist, [])
-    write_woden_from_RTS_sources(all_RTS_sources,outname,gitlabel)
+    write_woden_from_RTS_sources(all_RTS_sources, outname)

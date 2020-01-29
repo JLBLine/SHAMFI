@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 from __future__ import print_function,division
-from shamfi_lib import *
+from shamfi.shamfi_lib import *
+from shamfi.git_helper import *
 import argparse
 from sys import exit
-
-gitlabel = get_gitlabel()
 
 parser = argparse.ArgumentParser(description="Combines multiple srclists (RTS or WODEN) into one source. \
                                  Assumes that each srclist only contains one SOURCE currently")
@@ -49,7 +48,7 @@ if srctype == 'woden':
         all_lines.append(lines_extra)
 
     with open(outname,'w+') as outfile:
-        outfile.write('##Combined with SHAMFI commit %s\n' %gitlabel)
+        write_git_header(outfile)
         outfile.write('SOURCE combined_woden P %d G %d S %d %d\n' %(tot_num_point,tot_num_gauss,tot_num_shape,tot_num_coeffs))
 
         for lines in all_lines:
@@ -67,4 +66,4 @@ elif srctype == 'rts':
     for srclist in srclists:
         all_RTS_sources = get_RTS_sources(srclist, all_RTS_sources)
 
-    write_singleRTS_from_RTS_sources(all_RTS_sources,outname,gitlabel)
+    write_singleRTS_from_RTS_sources(all_RTS_sources, outname)

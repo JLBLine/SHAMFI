@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 from astropy.wcs import WCS
 import argparse
 
-gitlabel = get_gitlabel()
-
 ##convert between FWHM and std dev
 factor = 2. * sqrt(2.*log(2.))
 
@@ -133,17 +131,19 @@ with fits.open(fits_file) as hdu:
     elif data_dims == 2:
         hdu[0].data[:,:] = data
 
-    ##Include git version in the FITS header
-    header['SHAMFIv'] = gitlabel
-    hdu.writeto(outname,overwrite=True)
+    git_dict = get_gitdict()
+
+    hdu[0].header['SHAMFIv'] = git_dict['describe']
+    hdu[0].header['SHAMFId'] = git_dict['date']
+    hdu[0].header['SHAMFIb'] = git_dict['branch']
 
     ##Write out subtracted source lists if necessary
     if args.srclist_type == 'none':
         pass
     elif args.srclist_type == 'rts':
-        write_singleRTS_from_RTS_sources([source],'%s-rts.txt' %srclist_prepend,gitlabel)
+        write_singleRTS_from_RTS_sources([source],'%s-rts.txt' %srclist_prepend)
     elif args.srclist_type == 'woden':
-        write_woden_from_RTS_sources([source],'%s-woden.txt' %srclist_prepend,gitlabel)
+        write_woden_from_RTS_sources([source],'%s-woden.txt' %srclist_prepend)
     else:
-        write_singleRTS_from_RTS_sources([source],'%s-rts.txt' %srclist_prepend,gitlabel)
-        write_woden_from_RTS_sources([source],'%s-woden.txt' %srclist_prepend,gitlabel)
+        write_singleRTS_from_RTS_sources([source],'%s-rts.txt' %srclist_prepend)
+        write_woden_from_RTS_sources([source],'%s-woden.txt' %srclist_prepend)

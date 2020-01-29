@@ -2,13 +2,15 @@
 from __future__ import print_function,division
 from numpy import *
 from astropy.wcs import WCS
-from shamfi_lib import *
+import shamfi
+from shamfi.shamfi_lib import *
+from shamfi.git_helper import print_version_info
 from copy import deepcopy
 from subprocess import check_output
 import argparse
 import os
-
-gitlabel = get_gitlabel()
+from shamfi import __cite__
+from sys import exit
 
 parser = argparse.ArgumentParser(description="A script to fit a shapelet model consistent with the RTS or WODEN")
 
@@ -76,13 +78,27 @@ parser.add_argument('--compress',default=False,
 parser.add_argument('--just_plot', default=False, action='store_true',
                     help='Default behaviour is to fit a shapelet model to --fits_file. If just plotting pass this to switch off fitting')
 
-parser.add_argument('--plot_reso', default=0.05, action='store_true',
+parser.add_argument('--plot_reso', default=0.05,
                     help='Resolution (deg) of output plot when using --just_plot. Default = 0.05')
 
-parser.add_argument('--plot_size', default=0.75, action='store_true',
+parser.add_argument('--plot_size', default=0.75,
                     help='Size (deg) of output plot when using --just_plot. Default = 0.75')
 
+##Version and citation informations
+parser.add_argument('--version', default=False, action='store_true',
+                    help='Prints the version info and exits')
+parser.add_argument('--cite', default=False, action='store_true',
+                    help='Prints a bibtex entry for citing this work (well it will once the paper is published)')
+
 args = parser.parse_args()
+
+if args.version:
+    print_version_info(os.path.realpath(__file__))
+    exit()
+
+if args.cite:
+    print(__cite__)
+    exit()
 
 ##Get some argument values
 save_tag = args.save_tag
@@ -160,12 +176,12 @@ if args.plot_resid_grid: plot_grid_search(matrix_plot,num_beta_points,b1_grid,b2
 if args.rts_srclist:
     save_srclist(save_tag=save_tag+'_nmax%03d_p100' %nmax, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
         fitted_model=fit_data_full, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-        pix_area=pix_area_rad, gitlabel=gitlabel)
+        pix_area=pix_area_rad)
 
 if args.woden_srclist:
     save_srclist(save_tag=save_tag+'_nmax%03d_p100' %nmax, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
         fitted_model=fit_data_full, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-        pix_area=pix_area_rad, gitlabel=gitlabel,rts_srclist=False)
+        pix_area=pix_area_rad,rts_srclist=False)
 
 if args.compress:
 
@@ -193,13 +209,13 @@ if args.compress:
             save_srclist(save_tag=save_tag+'_nmax%03d_p%03d' %(nmax,compress_value), nmax=nmax,
                 n1s=n1s_compressed, n2s=n2s_compressed, fitted_coeffs=fitted_coeffs_compressed, b1=b1, b2=b2,
                 fitted_model=fit_data_compressed, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-                pix_area=pix_area_rad, gitlabel=gitlabel)
+                pix_area=pix_area_rad)
 
         if args.woden_srclist:
             save_srclist(save_tag=save_tag+'_nmax%03d_p%03d' %(nmax,compress_value), nmax=nmax,
                 n1s=n1s_compressed, n2s=n2s_compressed, fitted_coeffs=fitted_coeffs_compressed, b1=b1, b2=b2,
                 fitted_model=fit_data_compressed, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-                pix_area=pix_area_rad, gitlabel=gitlabel, rts_srclist=False)
+                pix_area=pix_area_rad, rts_srclist=False)
 
     ##Plot the results
     plot_compressed_fits(args, compressed_images, flat_data, data.shape, pixel_inds_to_use,
@@ -207,5 +223,5 @@ if args.compress:
 
 ##Doing the plots and stuff changes the shape of some arrays, so run all finals
 ##FITS and plot generation after compression
-save_output_FITS(args.fits_file,fit_data_full,data.shape,save_tag,nmax,edge_pad,len1,len2,convert2pixel,gitlabel)
+save_output_FITS(args.fits_file,fit_data_full,data.shape,save_tag,nmax,edge_pad,len1,len2,convert2pixel)
 masked_data_plot = plot_full_fit(args, fit_data_full, flat_data, data.shape, pixel_inds_to_use, save_tag, nmax, popt, pa, b1, b2, rest_gauss_kern, fitted_coeffs)
