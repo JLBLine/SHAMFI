@@ -170,7 +170,9 @@ b1,b2,n1s,n2s,fitted_coeffs,fit_data_full,xrot,yrot,matrix_plot = do_grid_search
                                                           num_beta_points,ras,decs)
 
 ##Plot the grid residual search if you want
-if args.plot_resid_grid: plot_grid_search(matrix_plot,num_beta_points,b1_grid,b2_grid,save_tag)
+if args.plot_resid_grid:
+    plot_grid_search(matrix_plot,num_beta_points,b1_grid,b2_grid,save_tag)
+    savez_compressed('%s_grid.npz' %save_tag,matrix_plot=matrix_plot,b1_grid=b1_grid,b2_grid=b2_grid)
 
 ##Write srclists if needed
 if args.rts_srclist:
@@ -224,4 +226,4 @@ if args.compress:
 ##Doing the plots and stuff changes the shape of some arrays, so run all finals
 ##FITS and plot generation after compression
 save_output_FITS(args.fits_file,fit_data_full,data.shape,save_tag,nmax,edge_pad,len1,len2,convert2pixel)
-masked_data_plot = plot_full_fit(args, fit_data_full, flat_data, data.shape, pixel_inds_to_use, save_tag, nmax, popt, pa, b1, b2, rest_gauss_kern, fitted_coeffs)
+masked_data_plot = plot_full_fit(args, fit_data_full, flat_data.flatten(), data.shape, pixel_inds_to_use, save_tag, nmax, popt, pa, b1, b2, rest_gauss_kern, fitted_coeffs)

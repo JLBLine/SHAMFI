@@ -648,7 +648,6 @@ def plot_full_fit(args, fit_data, flat_data, data_shape, pixel_inds_to_use,
         ax3 = fig.add_subplot(223)
         ax4 = fig.add_subplot(224)
     else:
-    # fig = plt.figure(figsize=(12,5))
         ax1 = fig.add_subplot(221)
         ax2 = fig.add_subplot(222)
         ax3 = fig.add_subplot(223)
@@ -658,7 +657,6 @@ def plot_full_fit(args, fit_data, flat_data, data_shape, pixel_inds_to_use,
 
     else:
         vmin,vmax = False, False
-
 
     bad_inds = setdiff1d(arange(len(flat_data)),pixel_inds_to_use)
     flat_data[bad_inds] = nan
@@ -758,8 +756,7 @@ def do_fitting_compressed(ras,decs,b1,b2,pa,n1s_compressed,n2s_compressed,rest_g
 def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
                        rest_gauss_kern,data,pixel_inds_to_use,args,
                        num_beta_points,ras,decs,full_fit=True,
-                       n1s_compressed=False,n2s_compressed=False,
-                       save_grid_npz=False):
+                       n1s_compressed=False,n2s_compressed=False):
     ##Setup up empty lists / arrays to store fitted data results
     fit_datas = []
     resids = []
@@ -795,7 +792,6 @@ def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
 
     ##Find the minimum point
     best_b1_ind,best_b2_ind = where(matrix_plot == nanmin(matrix_plot))
-    if save_grid_npz: savez_compressed('%s_grid.npz' %save_tag,matrix_plot=matrix_plot,b1_grid=b1_grid,b2_grid=b2_grid)
 
     ##Use minimum indexes to find best fit results
     best_b1_ind,best_b2_ind = best_b1_ind[0],best_b2_ind[0]
