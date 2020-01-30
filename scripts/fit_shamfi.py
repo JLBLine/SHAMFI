@@ -163,11 +163,11 @@ rest_gauss_kern = create_restoring_kernel(rest_bmaj,rest_bmin,rest_pa,ra_reso,de
 
 ##Number of coeffs up to order nmax
 total_coeffs = 0.5*(nmax+1)*(nmax+2)
-b1,b2,n1s,n2s,fitted_coeffs,fit_data_full,xrot,yrot,matrix_plot = do_grid_search_fit(total_coeffs,
-                                                          flat_data,b1_grid,b2_grid,
-                                                          pa,nmax,rest_gauss_kern,data,
-                                                          pixel_inds_to_use,args,
-                                                          num_beta_points,ras,decs)
+b1,b2,best_b1_ind,best_b2_ind,n1s,n2s,fitted_coeffs,fit_data_full,xrot,yrot,matrix_plot = do_grid_search_fit(total_coeffs,
+                                                                                          flat_data,b1_grid,b2_grid,
+                                                                                          pa,nmax,rest_gauss_kern,data,
+                                                                                          pixel_inds_to_use,args,
+                                                                                          num_beta_points,ras,decs)
 
 ##Plot the grid residual search if you want
 if args.plot_resid_grid:
@@ -189,12 +189,17 @@ if args.compress:
 
     compressed_images = []
 
+    _, _, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2,convolve_kern=rest_gauss_kern,shape=data.shape)
+    ##Sort the basis functions by highest absolute flux contribution to the model
+    basis_sums, sums_order = order_basis_by_flux(fitted_coeffs,A_shape_basis)
+
     for compress_value in compress_values:
         print('--------------------------------------')
         print('Running compression at %.1f%%' %compress_value)
-        ##Sort the basis functions by highest ranking, and return to top num_coeffs
-        num_coeffs_compress = int(ceil(len(n1s) * (compress_value / 100.0)))
-        n1s_compressed,n2s_compressed,fitted_coeffs_compressed,order = compress_coeffs(n1s,n2s,fitted_coeffs,num_coeffs_compress,xrot,yrot,b1,b2,convolve_kern=rest_gauss_kern,shape=data.shape)
+
+        ##Compress the basis functions by only including the basis functions that contribute up to some percentage of
+        ##the overall flux of the model
+        n1s_compressed,n2s_compressed,fitted_coeffs_compressed,order = compress_by_flux_percentage(basis_sums, sums_order, compress_value, n1s, n2s, fitted_coeffs)
 
         ##Do grid based fitting again in case a better b1,b2 combo works with the compressed coeffs
         b1_compressed,b2_compressed,n1s_compressed,n2s_compressed, \

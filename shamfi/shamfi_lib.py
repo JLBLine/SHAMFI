@@ -221,13 +221,15 @@ def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve
 
     return basis*norm
 
-def gen_reduced_A_shape_matrix(n1s=None, n2s=None, xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
-    '''Setup the A matrix used in the linear least squares fit of the basis functions for just n1s,n2s'''
-    A_shape_basis = zeros((len(xrot),len(n1s)))
-    for index,n1 in enumerate(n1s):
-        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
+def multidim_intersect(arr1, arr2):
+    '''Takes two 2D arrays, uses view to make them look 1D, and uses
+    intersect1d to return the indexes in the first array where the elements
+    are equal'''
+    arr1_view = arr1.view([('',arr1.dtype)]*arr1.shape[1])
+    arr2_view = arr2.view([('',arr2.dtype)]*arr2.shape[1])
+    intersected = intersect1d(arr1_view, arr2_view, return_indices=True)
 
-    return A_shape_basis
+    return intersected[1]
 
 def gen_A_shape_matrix(xrot=None,yrot=None,nmax=None,b1=None,b2=None,convolve_kern=False,shape=False):
     '''Setup the A matrix used in the linear least squares fit of the basis functions. Works out all
@@ -274,7 +276,8 @@ def linear_solve(flat_data=None,A_shape_basis=None):
 def fitted_model(coeffs=None,A_shape_basis=None):
     '''Generates the fitted shapelet model for the given coeffs
     and A_shape_basis'''
-    return matrix(A_shape_basis)*matrix(coeffs)
+    # return matrix(A_shape_basis)*matrix(coeffs)
+    return matmul(A_shape_basis,coeffs)
 
 def save_srclist(save_tag=None, nmax=None, n1s=None, n2s=None, fitted_coeffs=None,
     b1=None, b2=None, fitted_model=None, ra_cent=None, dec_cent=None, freq=None,
@@ -448,20 +451,47 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
 
     return data,flat_data,ras,decs,convert2pixel,ra_reso,dec_reso,freq,len1,len2,wcs,dims,rest_bmaj,rest_bmin,rest_pa
 
-def compress_coeffs(n1s,n2s,coeffs,num_coeffs,xrot,yrot,b1,b2,convolve_kern=False,shape=False):
-    '''Go through all basis functions defined by n1,n2,b1,b2, generate them, multiply by
-    the fitted coeffs, and sum the absolute values to rank them by flux'''
-    sums = []
-    ##For each n1,n2, generate basis function, take absolute, sum, and store in sums
-    for index,n1 in enumerate(n1s):
-        val = sum(abs(coeffs[index]*gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)))
-        sums.append(val)
+def order_basis_by_flux(coeffs,A_matrix):
+    '''Go through all basis functions values in the A_matrix, multiply by the
+    fitted coefficent, sum the asbolute value over all pixels to work out the
+    contribution of each basis function to the model'''
+    basis_sums = []
+    ##For each coefficient, multiply the coeff and basis function for all pixels,
+    ##and sum the absolute vales
+    for index,coeff in enumerate(coeffs):
+        val = sum(abs(coeff*A_matrix[:,index]))
+        basis_sums.append(val)
 
-    ##Sort them, find all coeffs up to num_coeffs
-    sums = array(sums)
-    order = argsort(sums)[::-1]
-    order_high = order[:num_coeffs]
-    order_low = order[num_coeffs:]
+    ##Sort them by largest contribution first
+    basis_sums = array(basis_sums)
+    sums_order = argsort(basis_sums)[::-1]
+
+    return basis_sums,sums_order
+
+def compress_by_flux_percentage(basis_sums, sums_order, compress_value, n1s, n2s, coeffs):
+    '''Take the abs value of contribution of each basis function to the model
+    in basis_sums, and return the n1s,n2s,coeffs up to some overall flux limit
+    defined by compress_value'''
+
+    ##Set a flux limit by taking  a percentage of the full model flux
+    flux_lim = (compress_value / 100.0)*sum(basis_sums)
+    model_flux = 0
+    comp_ind = 0
+    ##Put absolute values in order, with largest first
+    mags = basis_sums[sums_order]
+
+    ##If no compression, use all values
+    if compress_value == 100.0:
+        comp_ind = len(mags)
+
+    else:
+        while model_flux < flux_lim:
+            model_flux += mags[comp_ind]
+
+            comp_ind += 1
+
+    order_high = sums_order[:comp_ind]
+    order_low = sums_order[comp_ind:]
 
     return n1s[order_high],n2s[order_high],coeffs[order_high],order_high
 
@@ -637,9 +667,6 @@ def do_subplot(fig,ax,data,label,vmin,vmax):
 def plot_full_fit(args, fit_data, flat_data, data_shape, pixel_inds_to_use,
                   save_tag, nmax, popt, pa, b1, b2, rest_gauss_kern, fitted_coeffs):
 
-    # A_shape_basis_no_conv = gen_reduced_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,b1=b1,b2=b2)
-    # fitted_coeffs.shape = (len(fitted_coeffs),1)
-    # fit_data_no_conv = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis_no_conv)#
     fig = plt.figure(figsize=(10,8))
     if args.plot_edge_pad:
 
@@ -706,7 +733,7 @@ def do_fitting(ras,decs,b1,b2,pa,nmax,rest_gauss_kern,data,flat_data,pixel_inds_
     n1s, n2s, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2,convolve_kern=rest_gauss_kern,shape=data.shape)
 
     fitted_coeffs = linear_solve(flat_data=flat_data[pixel_inds_to_use],A_shape_basis=A_shape_basis[pixel_inds_to_use,:])
-    ##Creates a model of the fully
+    # ##Creates a model of the fully
     fit_data_full = fitted_model(coeffs=fitted_coeffs,A_shape_basis=A_shape_basis)
 
 
@@ -723,9 +750,20 @@ def do_fitting(ras,decs,b1,b2,pa,nmax,rest_gauss_kern,data,flat_data,pixel_inds_
     resid = find_resids(data=flat_data[diff_inds],fit_data=fit_data_full[diff_inds])
     # print(resid)
 
-    return resid, fit_data_full, fitted_coeffs, n1s, n2s, xrot, yrot
+    return resid, fit_data_full, fitted_coeffs, n1s, n2s, xrot, yrot, A_shape_basis
 
-def do_fitting_compressed(ras,decs,b1,b2,pa,n1s_compressed,n2s_compressed,rest_gauss_kern,data,flat_data,pixel_inds_to_use,args):
+
+def gen_reduced_A_shape_matrix(n1s=None, n2s=None, xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
+    '''Setup the A matrix used in the linear least squares fit of the basis functions for just n1s,n2s'''
+    A_shape_basis = zeros((len(xrot),len(n1s)))
+    for index,n1 in enumerate(n1s):
+        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
+
+    return A_shape_basis
+
+# @profile
+def do_fitting_compressed(ras,decs,b1,b2,pa,n1s_compressed,n2s_compressed,
+                          rest_gauss_kern,data,flat_data,pixel_inds_to_use,args):
     '''Takes the data and fits shapelet basis functions to them. Uses the given
     b1, b2, pa to scale the coords, n1s_compressed, n2s_compressed to create the number of basis functions,
     and the rest_gauss_kern to apply to restoring beam to the basis functions'''
@@ -733,6 +771,7 @@ def do_fitting_compressed(ras,decs,b1,b2,pa,n1s_compressed,n2s_compressed,rest_g
     xrot,yrot = radec2xy(ras,decs,pa,b1,b2)
 
     A_shape_basis_compressed = gen_reduced_A_shape_matrix(n1s=n1s_compressed,n2s=n2s_compressed,xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=rest_gauss_kern,shape=data.shape)
+    # A_shape_basis_compressed = full_A_matrix[:,order]
     fitted_coeffs_compressed = linear_solve(flat_data=flat_data,A_shape_basis=A_shape_basis_compressed)
     fit_data_compressed = fitted_model(coeffs=fitted_coeffs_compressed,A_shape_basis=A_shape_basis_compressed)
 
@@ -753,10 +792,12 @@ def do_fitting_compressed(ras,decs,b1,b2,pa,n1s_compressed,n2s_compressed,rest_g
 
     return resid, fit_data_compressed, fitted_coeffs_compressed, xrot, yrot
 
+# @profile
 def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
                        rest_gauss_kern,data,pixel_inds_to_use,args,
                        num_beta_points,ras,decs,full_fit=True,
-                       n1s_compressed=False,n2s_compressed=False):
+                       n1s_compressed=False,n2s_compressed=False,
+                       A_shape_basis_dict=False,order=False):
     ##Setup up empty lists / arrays to store fitted data results
     fit_datas = []
     resids = []
@@ -768,6 +809,8 @@ def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
     xrot_matrix = zeros((num_beta_points,num_beta_points,len(flat_data)))
     yrot_matrix = zeros((num_beta_points,num_beta_points,len(flat_data)))
 
+    # if full_fit: A_shape_basis_dict = {}
+
     ##Set up ranges of b1,b2 to fit
     b_inds = []
     for b1_ind in arange(num_beta_points):
@@ -776,7 +819,10 @@ def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
     ##Run full nmax fits over range of b1,b2 using progressbar to, well, show progress
     for b1_ind,b2_ind in progressbar(b_inds,prefix='Fitting shapelets: '):
         if full_fit:
-            resid, fit_data, fitted_coeffs, n1s, n2s, xrot, yrot = do_fitting(ras,decs,b1_grid[b1_ind],b2_grid[b2_ind],pa,nmax,rest_gauss_kern,data,flat_data,pixel_inds_to_use,args)
+            resid, fit_data, fitted_coeffs, n1s, n2s, xrot, yrot, A_shape_basis = do_fitting(ras,decs,b1_grid[b1_ind],
+                                                                b2_grid[b2_ind],pa,nmax,rest_gauss_kern,data,flat_data,
+                                                                pixel_inds_to_use,args)
+            # A_shape_basis_dict['%03d%03d' %(b1_ind,b2_ind)] = deepcopy(A_shape_basis)
         else:
             resid, fit_data, fitted_coeffs, xrot, yrot = do_fitting_compressed(ras,decs,b1_grid[b1_ind],b2_grid[b2_ind],
                                                          pa,n1s_compressed,n2s_compressed,rest_gauss_kern,
@@ -807,7 +853,10 @@ def do_grid_search_fit(total_coeffs,flat_data,b1_grid,b2_grid,pa,nmax,
     best_b2 = (b2/D2R)*60.0
     print('Best b1 %.2e arcmin b2 %.2e arcmin' %(best_b1,best_b2))
 
-    return b1,b2,n1s,n2s,fitted_coeffs,fit_data,xrot,yrot,matrix_plot
+    if full_fit:
+        return b1,b2,best_b1_ind,best_b2_ind,n1s,n2s,fitted_coeffs,fit_data,xrot,yrot,matrix_plot
+    else:
+        return b1,b2,n1s,n2s,fitted_coeffs,fit_data,xrot,yrot,matrix_plot
 
 
 def plot_compressed_fits(args, compressed_images, flat_data, data_shape, pixel_inds_to_use,
