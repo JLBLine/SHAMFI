@@ -138,6 +138,8 @@ with fits.open(fits_file) as hdu:
     hdu[0].header['SHAMFId'] = git_dict['date']
     hdu[0].header['SHAMFIb'] = git_dict['branch']
 
+    hdu.writeto(outname,overwrite=True)
+
     ##Write out subtracted source lists if necessary
     if args.srclist_type == 'none':
         pass

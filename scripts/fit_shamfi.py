@@ -58,10 +58,10 @@ parser.add_argument('--exclude_box', action='append',
     fit_shapelets.py --exclude_box 0,10,10,20 --exclude_box 100,400,300,455')
 
 parser.add_argument('--diff_box',default=False,
-    help='Define a box in which to calculate residuals to the fix. Add as x_low,x_high,y_low,y_high')
+    help='Define a box in which to calculate residuals to the fit. Add as x_low,x_high,y_low,y_high')
 
 parser.add_argument('--fit_box',default=False,
-    help='Only fit shapelets to dat within the designated box. Add as x_low,x_high,y_low,y_high')
+    help='Only fit shapelets to data within the designated box. Add as x_low,x_high,y_low,y_high')
 
 parser.add_argument('--plot_resid_grid',default=False, action='store_true',
     help='Add to plot the residuals matrix found for all values of b1 and b2')
@@ -125,7 +125,7 @@ if not args.already_jy_per_pixel:
     data *= convert2pixel
 
 ##Find the indexes of pixels to be fitted
-pixel_inds_to_use = find_good_pixels(args,edge_pad,flat_data,len1)
+pixel_inds_to_use = find_good_pixels(args,edge_pad,flat_data,len1+2*edge_pad)
 print('Sum of flux in data is %.2f' %(sum(flat_data[pixel_inds_to_use])))
 
 ##Find the flux weighted central pixel of the data to be fitted

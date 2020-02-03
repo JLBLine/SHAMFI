@@ -553,7 +553,7 @@ def find_good_pixels(args,edge_pad,flat_data,x_len):
     ##If a box is specified, limit pixels to within that box
     if args.fit_box:
         pixel_inds_to_use = []
-        low_x,high_x,low_y,high_y = array(map(int,args.fit_box.split(','))) + edge_pad
+        low_x,high_x,low_y,high_y = array(args.fit_box.split(','),dtype=int)
         for y in range(low_y,high_y+1):
             for x in range(low_x,high_x+1):
                 pixel_inds_to_use.append(y*x_len + x)
@@ -573,7 +573,7 @@ def find_good_pixels(args,edge_pad,flat_data,x_len):
             try:
                 avoid_inds = []
                 for box in args.exclude_box:
-                    low_x,high_x,low_y,high_y = array(box.split(','),dtype=int) + edge_pad
+                    low_x,high_x,low_y,high_y = array(box.split(','),dtype=int)
                     for y in range(low_y,high_y+1):
                         for x in range(low_x,high_x+1):
                             avoid_inds.append(y*x_len + x)
@@ -1039,7 +1039,7 @@ def write_woden_component_as_RTS(lines, outfile, name = False):
         if 'GPARAMS' in line:
             _,pa,major,minor = line.split()
             ##The RTS uses the std instead of the FWHM for major/minor
-            outfile.write('GAUSSIAN %s %s %s\n' %(pa,major*factor,minor*factor))
+            outfile.write('GAUSSIAN %s %.10f %.10f\n' %(pa,float(major)*factor,float(minor)*factor))
         if 'SPARAMS' in line:
             _,pa,major,minor = line.split()
             outfile.write('SHAPELET2 %s %s %s\n' %(pa,major,minor))
