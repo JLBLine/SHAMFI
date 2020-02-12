@@ -35,8 +35,11 @@ x_cent = int(floor(n_x / 2))
 xrange = linspace(-xmax,xmax,n_x)
 xres = xrange[1] - xrange[0]
 
-##convert between FWHM and std dev
+##convert between FWHM and std dev for the gaussian function
 factor = 2. * sqrt(2.*log(2.))
+
+##converts between FWHM and std dev for the RTS
+rts_factor = sqrt(pi**2 / (2.*log(2.)))
 
 # ##Find where this file is so we can find the basis functions
 # fileloc = os.path.realpath(__file__)
@@ -340,11 +343,11 @@ def radec2xy(ras,decs,pa,b1,b2):
     yrot = x*cos(angle) + -y*sin(angle)
     xrot = x*sin(angle) + y*cos(angle)
 
-    factor = (2*pi) / (sqrt(pi**2 / (2*log(2))))
+    scale_factor = (2*pi) / (sqrt(pi**2 / (2*log(2))))
 
     ##Apply conversion into stdev from FWHM and beta params
-    xrot *= factor / b1
-    yrot *= factor / b2
+    xrot *= scale_factor / b1
+    yrot *= scale_factor / b2
 
     return xrot,yrot
 
@@ -641,7 +644,6 @@ def save_output_FITS(fitsfile,save_data,data_shape,save_tag,nmax,edge_pad,
 
 
 def create_restoring_kernel(rest_bmaj,rest_bmin,rest_pa,ra_reso,dec_reso):
-    factor = 2. * sqrt(2.*log(2.))
     x_stddev = rest_bmaj / (factor*ra_reso)
     y_stddev = rest_bmin / (factor*dec_reso)
 
@@ -1039,7 +1041,7 @@ def write_woden_component_as_RTS(lines, outfile, name = False):
         if 'GPARAMS' in line:
             _,pa,major,minor = line.split()
             ##The RTS uses the std instead of the FWHM for major/minor
-            outfile.write('GAUSSIAN %s %.10f %.10f\n' %(pa,float(major)*factor,float(minor)*factor))
+            outfile.write('GAUSSIAN %s %.10f %.10f\n' %(pa,float(major)*rts_factor,float(minor)*rts_factor))
         if 'SPARAMS' in line:
             _,pa,major,minor = line.split()
             outfile.write('SHAPELET2 %s %s %s\n' %(pa,major,minor))
@@ -1083,7 +1085,7 @@ def write_woden_from_RTS_sources(RTS_sources,outname):
 
                 if comp_info.comp_type == 'GAUSSIAN':
                     ##RTS gaussians are std dev, WODEN are FWHM
-                    outfile.write('GPARAMS %s %s %s\n' %(comp_info.pa,comp_info.major/factor,comp_info.minor/factor))
+                    outfile.write('GPARAMS %s %.10f %.10f\n' %(comp_info.pa,float(comp_info.major)/rts_factor,float(comp_info.minor)/rts_factor))
 
                 elif comp_info.comp_type == 'SHAPELET':
                     outfile.write('SPARAMS %s %s %s\n' %(comp_info.pa,comp_info.major,comp_info.minor))
