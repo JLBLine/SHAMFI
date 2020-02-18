@@ -52,6 +52,10 @@ Script Documentation
    :maxdepth: 2
 
    fit_shamfi
+   subtract_gauss_from_image_shamfi
+   mask_fits_shamfi
+   combine_srclists_shamfi
+   convert_srclists_shamfi
 
 
 

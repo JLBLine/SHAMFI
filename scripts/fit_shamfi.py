@@ -9,40 +9,42 @@ def get_parser():
     parser = argparse.ArgumentParser(description="A script to fit a shapelet model consistent with the RTS or WODEN")
 
     parser.add_argument('--rts_srclist', default=False, action='store_true',
-                        help='Output an RTS style srclist')
+        help='Save an RTS style srclist')
 
     parser.add_argument('--woden_srclist', default=False, action='store_true',
-                        help='Output a WODEN style srclist')
+        help='Save a WODEN style srclist')
 
-    parser.add_argument('--fits_file', default=False,
-                        help='Name of fits file to fit data from')
+    parser.add_argument('--fits_file', default=False, required=True,
+        help='Name of fits file to fit data from')
 
     parser.add_argument('--b1s', default=False,
-                        help="The beta scale range along the major axis (arcmins). Enter as a lower and upper bound separated by a comma, eg 2,10" )
+        help="The beta scale range along the major axis (arcmins). Enter as a lower and upper bound separated by a comma, eg 2,10" )
 
     parser.add_argument('--b2s', default=False,
-                        help="The beta scale along the minor (arcmins). Enter as a lower and upper bound separated by a comma, eg 2,10" )
+        help="The beta scale along the minor (arcmins). Enter as a lower and upper bound separated by a comma, eg 2,10" )
 
-    parser.add_argument('--nmax', default=31,type=int,
-                        help='Maximum value of n1 to include in the basis functions - current maximum possible in the RTS is 31\n (The bigger the n1, the higher the resolution of the fitted model)')
+    parser.add_argument('--nmax', default=10,type=int,
+        help='Maximum value of n1 to include in the basis functions - current maximum possible in the RTS is 100 \
+                         (The bigger the n1, the higher the resolution of the fitted model)')
 
     parser.add_argument('--save_tag', default='model',
-                        help='A tag to name the outputs with - defaults to "model"')
+        help='A tag to name the outputs with - defaults to "model"')
 
     parser.add_argument('--plot_lims', default=False,
-                    help='Flux limits for the plot - enter as vmin,vmax. Default is min(image),max(image)')
+        help='Flux limits for the plot - enter as vmin,vmax. Default is min(image),max(image)')
 
     parser.add_argument('--freq', default='from_FITS',
-                    help='Frequency (Hz) of the image - defaults to looking for keyword FREQ and associated value')
+        help='Frequency (Hz) of the image - defaults to looking for keyword FREQ and associated value')
 
     parser.add_argument('--already_jy_per_pixel', default=False, action='store_true',
-                        help='Add to NOT convert pixels from Jy/beam into Jy/pixel')
+        help='Add to NOT convert pixels from Jy/beam into Jy/pixel')
 
     parser.add_argument('--edge_pad', default=0,type=int,
-                        help="Add empty pixels outside image to stop fitting artefacts outside the desired image - defaults to 0 pixels. Set to desired amount using --edge_pad=number." )
+        help="Add empty pixels outside image to stop fitting artefacts outside the desired image - defaults to 0 pixels. \
+        Set to desired amount using --edge_pad=number." )
 
     parser.add_argument('--num_beta_values', default=5,type=int,
-                        help="Num of beta params fit over ranges --b1s and --b2s")
+        help="Num of beta params fit over ranges --b1s and --b2s")
 
     parser.add_argument('--exclude_box', action='append',
         help='Any number of areas to exclude from the fit. Specify by user pixel numbers. Add each box as as: \
@@ -69,20 +71,21 @@ def get_parser():
     parser.add_argument('--compress',default=False,
         help='Add a list of comma separated percentage compression values to apply to the data, e.g. --compress=90,80,70')
 
-    parser.add_argument('--just_plot', default=False, action='store_true',
-                        help='Default behaviour is to fit a shapelet model to --fits_file. If just plotting pass this to switch off fitting')
-
-    parser.add_argument('--plot_reso', default=0.05,
-                        help='Resolution (deg) of output plot when using --just_plot. Default = 0.05')
-
-    parser.add_argument('--plot_size', default=0.75,
-                        help='Size (deg) of output plot when using --just_plot. Default = 0.75')
+    ##TODO - make the script able to just plot a given shapelet model
+    # parser.add_argument('--just_plot', default=False, action='store_true',
+    #     help='Default behaviour is to fit a shapelet model to --fits_file. If just plotting pass this to switch off fitting')
+    #
+    # parser.add_argument('--plot_reso', default=0.05,
+    #     help='Resolution (deg) of output plot when using --just_plot. Default = 0.05')
+    #
+    # parser.add_argument('--plot_size', default=0.75,
+    #     help='Size (deg) of output plot when using --just_plot. Default = 0.75')
 
     ##Version and citation informations
     parser.add_argument('--version', default=False, action='store_true',
-                        help='Prints the version info and exits')
+        help='Prints the version info and exits')
     parser.add_argument('--cite', default=False, action='store_true',
-                        help='Prints a bibtex entry for citing this work (well it will once the paper is published)')
+        help='Prints a bibtex entry for citing this work (well it will once the paper is published)')
 
 
     return parser
