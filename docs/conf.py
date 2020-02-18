@@ -13,8 +13,9 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../shamfi'))
-sys.path.insert(0, os.path.abspath('..'))
-
+sys.path.insert(0, os.path.abspath('../scripts'))
+sys.path.insert(0, os.path.abspath('../'))
+import shamfi_lib
 
 # -- Project information -----------------------------------------------------
 
@@ -23,7 +24,7 @@ copyright = '2020, J. L. B. Line'
 author = 'J. L. B. Line'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1b'
+release = shamfi_lib.__version__
 
 
 # -- General configuration ---------------------------------------------------
@@ -31,7 +32,13 @@ release = '0.1b'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ['sphinx.ext.autodoc']
+extensions = [
+    'sphinx.ext.autodoc',
+    'sphinx.ext.doctest',
+    'sphinx.ext.todo',
+    'sphinx.ext.viewcode',
+    'sphinxarg.ext'
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

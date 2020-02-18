@@ -5,10 +5,22 @@ This repo includes:
 
 Script  | Overall Function
 --|--
-`shamfi.py` | Takes a FITS file and fits a shapelet model
+`fit_shamfi.py` | Takes a FITS file and fits a shapelet model
 `mask_fits_shamfi.py` | Splits a FITS image into multiple images using gaussian masks
 `subtract_gauss_from_image_shamfi.py` | Subtracts specified gaussians from an image to make fitting shapelets easier
 `combine_srclists_shamfi.py` | Combine multiple RTS/WODEN source catalogues into one
 `convert_srclists_shamfi.py` | Convert between RTS and WODEN source catalogue formats
 
-Documentation is on the way soon.
+# Installation
+Grab the source code from this git repo:
+```sh
+git clone https://github.com/JLBLine/SHAMFI
+```
+Then navigate into that directory and run
+```
+pip install .
+```
+or alternatively
+```
+python setup.py install
+```
