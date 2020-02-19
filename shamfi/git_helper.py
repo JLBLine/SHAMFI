@@ -5,9 +5,24 @@ import pkg_resources
 from shamfi import __version__,__path__
 
 def get_commandline_output(command_list):
-    '''Takes a command line entry separated into list entries, and returns the
-    output from the command line as a string'''
-    return check_output(command_list,universal_newlines=True).strip()
+    """
+    Takes a command line entry separated into list entries, and returns the
+    output from the command line as a string
+
+    Parameters
+    ----------
+    command_list : list of strings
+        list of strings that when combined form a coherent command to input into
+        the command line
+
+    Returns
+    -------
+    output : string
+        the output result of running the command
+
+    """
+    output = check_output(command_list,universal_newlines=True).strip()
+    return output
 
 def make_gitdict():
     '''Makes a dictionary containing key git information about the repo'''
