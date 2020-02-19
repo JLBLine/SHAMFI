@@ -46,24 +46,26 @@ or alternatively
 
 ``python setup.py install``
 
-Script Documentation
+Usage
 ------------------------------------------
-.. toctree::
-   :maxdepth: 2
-
-   fit_shamfi
-   subtract_gauss_from_image_shamfi
-   mask_fits_shamfi
-   combine_srclists_shamfi
-   convert_srclists_shamfi
-
-
-
-Module Documentation
-------------------------------------------
+Check out the tutorial page for an example of how to run the scripts
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
-   shamfi_lib
-   git_helper
+   tutorial
+
+Scripts
+------------------------------------------
+.. toctree::
+   :maxdepth: 1
+
+   script_documentation
+
+Modules
+------------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   module_documentation
