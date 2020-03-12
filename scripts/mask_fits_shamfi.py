@@ -37,7 +37,7 @@ if __name__ == '__main__':
     def make_gauss_mask(low_x,high_x,low_y,high_y):
 
         new_data = zeros(data.shape)
-        edge = 50
+        edge = 1
 
         low_y -= edge
         high_y += edge

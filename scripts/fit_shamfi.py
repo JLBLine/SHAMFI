@@ -9,12 +9,15 @@ def get_parser():
     parser = argparse.ArgumentParser(description="A script to fit a shapelet model consistent with the RTS or WODEN")
 
     parser.add_argument('--rts_srclist', default=False, action='store_true',
-        help='Save an RTS style srclist')
+        help='Just save an RTS style srclist - default is to saving both RTS and WODEN srclists')
 
     parser.add_argument('--woden_srclist', default=False, action='store_true',
-        help='Save a WODEN style srclist')
+        help='Just save a WODEN style srclist - default is to saving both RTS and WODEN srclists')
 
-    parser.add_argument('--fits_file', default=False, required=True,
+    parser.add_argument('--no_srclist', default=False, action='store_true',
+        help='Do not save any srclists')
+
+    parser.add_argument('--fits_file', default=False,
         help='Name of fits file to fit data from')
 
     parser.add_argument('--b1s', default=False,
@@ -53,9 +56,6 @@ def get_parser():
         300 to 455 in the y range, enter this on the command line: \
         fit_shapelets.py --exclude_box 0,10,10,20 --exclude_box 100,400,300,455')
 
-    parser.add_argument('--diff_box',default=False,
-        help='Define a box in which to calculate residuals to the fit. Add as x_low,x_high,y_low,y_high')
-
     parser.add_argument('--fit_box',default=False,
         help='Only fit shapelets to data within the designated box. Add as x_low,x_high,y_low,y_high')
 
@@ -70,6 +70,13 @@ def get_parser():
 
     parser.add_argument('--compress',default=False,
         help='Add a list of comma separated percentage compression values to apply to the data, e.g. --compress=90,80,70')
+
+    parser.add_argument('--ignore_negative',default=False, action='store_true',
+        help='Add to ignore all negative pixels in image during the fit')
+
+    parser.add_argument('--max_baseline',default=3e3,
+        help='If no restoring beam information available, use this maximum baseline length in \
+              conjunction with the frequency to calculate a resolution to set BMAJ and BMIN')
 
     ##TODO - make the script able to just plot a given shapelet model
     # parser.add_argument('--just_plot', default=False, action='store_true',
@@ -90,28 +97,51 @@ def get_parser():
 
     return parser
 
+def apply_srclist_option(args,shapelet_fitter,save_tag):
+    '''Uses the user supplied arguments to write out the correct number of
+    srclists'''
+    if args.no_srclist:
+        pass
+    else:
+        if args.rts_srclist and args.woden_srclist:
+            shapelet_fitter.save_srclist(save_tag)
+        elif args.rts_srclist:
+            shapelet_fitter.save_srclist(save_tag,woden_srclist=False)
+        elif args.woden_srclist:
+            shapelet_fitter.save_srclist(save_tag,rts_srclist=False)
+        else:
+            shapelet_fitter.save_srclist(save_tag)
+
 
 if __name__ == '__main__':
+    from sys import path
+    path.append('/home/jline/software/SHAMFI/')
+    from shamfi import read_FITS_image, shapelet_coords, shamfi_plotting, shapelets
     from shamfi import __cite__
     from numpy import *
     from astropy.wcs import WCS
-    import shamfi
-    from shamfi.shamfi_lib import *
+    # import shamfi
+    # from shamfi.shamfi_lib import *
     from shamfi.git_helper import print_version_info
     from copy import deepcopy
     from subprocess import check_output
     import os
     from sys import exit
 
+    ##Convert degress to radians
+    D2R = pi/180.
+    ##Convert radians to degrees
+    R2D = 180./pi
 
-
+    ##Grab the parser and parse some args
     parser = get_parser()
     args = parser.parse_args()
 
+    ##print out the version if requested
     if args.version:
         print_version_info(os.path.realpath(__file__))
         exit()
-
+    ## print out the citation information if requested
     if args.cite:
         print(__cite__)
         exit()
@@ -124,6 +154,7 @@ if __name__ == '__main__':
     b2_min,b2_max = map(float,args.b2s.split(','))
     num_beta_points = args.num_beta_values
 
+    ##Check compression args
     if args.compress:
         try:
             compress_values = array(args.compress.split(','),dtype=float)
@@ -131,120 +162,119 @@ if __name__ == '__main__':
             print('Cannot convert --compress into something sensible. Please check you have comma separated value e.g. --compress=90,80,70')
             print('Continuing without running compression')
 
-    ##Grab a bunch of data and details from the FITS to fit
-    data,flat_data,ras,decs,convert2pixel,ra_reso,dec_reso,freq,len1,len2,wcs,dims,rest_bmaj,rest_bmin,rest_pa = get_fits_info(args.fits_file,edge_pad=edge_pad,freq=args.freq)
-    pix_area_rad = ra_reso*dec_reso*D2R**2
+    ##Read in the FITS data and header
+    fits_data = read_FITS_image.FITSInformation(args.fits_file)
 
-    ##Unless specified, convert from Jy / beam to Jy / pixel
+    ##Check everything that was read in
+    if fits_data.read_data:
+        pass
+    else:
+        msg = 'Unable to read basic data from FITS this fits file: \n'
+        msg += '%s. Exiting now.' %args.fits_file
+        exit(msg)
+
+    ##Check the frequency has been set - request it to be specified if not
+    if args.freq == 'from_FITS':
+        if fits_data.found_freq:
+            pass
+        else:
+            msg = 'Could not find necessary frequency information in the FITS file. \n'
+            msg += 'Please specify using the --freq argument. Exiting now.'
+            exit(msg)
+    else:
+        try:
+            fits_data.freq = float(args.freq)
+        except:
+            msg = 'Could not change --freq=%s into a sensible frequency. \n' %args.freq
+            msg += 'Please check and try again - exiting now'
+            exit(msg)
+
+    ##If reading major,minor information from the FITS file has failed,
+    ##estimate using the maxiumum baseline and frequency
+    if fits_data.got_convert2pixel:
+        pass
+    else:
+        VELC = 299792458.0
+        baseline = float(args.baseline)
+        reso = ((VELC/(fits_data.freq*1e+6))/baseline)*R2D
+        fits_data.bmaj = reso*0.5
+        fits_data.bmin = reso*0.5
+        rest_pa = 0.0
+        print('Assuming BMAJ,BMIN = %.3f,%.3f' %(bmaj,bmin))
+
+        fits_data.solid_beam = (pi*rest_bmaj*rest_bmin) / (4*log(2))
+        fits_data.solid_pixel = abs(ra_reso)*dec_reso
+
+        fits_data.convert2pixel = solid_pixel/solid_beam
+    #
+    # ##Unless specified, convert from Jy / beam to Jy / pixel
     if not args.already_jy_per_pixel:
-        flat_data *= convert2pixel
-        data *= convert2pixel
+        fits_data.covert_to_jansky_per_pix()
 
-    ##Find the indexes of pixels to be fitted
-    pixel_inds_to_use = find_good_pixels(args,edge_pad,flat_data,len1+2*edge_pad)
-    print('Sum of flux in data is %.2f' %(sum(flat_data[pixel_inds_to_use])))
+    ##If requested, edge pad the data, otherwise just create 1D RA/DEC arrays
+    fits_data.get_radec_edgepad(edge_pad=args.edge_pad)
 
-    ##Find the flux weighted central pixel of the data to be fitted
-    ra_ind,dec_ind,ra_mesh,dec_mesh,ra_range,dec_range = find_image_centre_celestial(ras=ras,decs=decs,flat_data=flat_data,pixel_inds_to_use=pixel_inds_to_use,data=data)
+    ##Set up a shapelet coordinate class based on the FITS information
+    shpcoord = shapelet_coords.ShapeletCoords(fits_data)
 
-    ##Fit a gaussian to the data to find pa
-    ##guess is: amp, xo, yo, sigma_x, sigma_y, pa
-    initial_guess = (data.max(),ra_range[int(ra_ind)],dec_range[int(dec_ind)],(b1_max / 60.0)*D2R,(b2_max / 60.0)*D2R,0)
-    popt, pcov = opt.curve_fit(twoD_Gaussian, (ra_mesh, dec_mesh), flat_data, p0=initial_guess)
+    ##Find the indexes of pixels to be fitted, based on user supplied args
+    ##This function will also find the flux-weighted centre of the image,
+    ##based on the pixel cuts
+    shpcoord.find_good_pixels(fit_box=args.fit_box,exclude_box=args.exclude_box,ignore_negative=args.ignore_negative)
+    # pixel_inds_to_use = find_good_pixels(args,edge_pad,flat_data,len1+2*edge_pad,ignore_negative=args.ignore_negative)
+    print('Sum of flux in data is %.2f Jy' %(sum(fits_data.flat_data[shpcoord.pixel_inds_to_use])))
 
-    ##Check pa is between 0 <= pa < 2pi
-    pa = popt[5]
-    if pa < 0:
-        pa += 2*pi
-    ##Necessary to move from my gaussian which has theta = 0 at x = 0 and
-    ##actual PA which is east from north
-    pa += pi / 2.0
-    if pa > 2*pi:
-        pa -= 2*pi
+    ##Fit a gaussian around the central point, using the beta params as an
+    ##initial guess. Also centres the zeroes the coord system about the fits
+    shpcoord.fit_gauss_and_centre_coords(b1_max=b1_max,b2_max=b2_max)
 
-    ##Set central ra, dec pixel to zero in prep for scaling to x,y coords
-    ra_cent, dec_cent, ras, decs = set_central_pixel_to_zero(popt,ras,decs,ra_range,dec_range,args,edge_pad,dims,wcs)
     ##If requested, plot the initial gaussian fit
-    if args.plot_initial_gaussian_fit: plot_gaussian_fit(ra_mesh, dec_mesh, popt, data, save_tag)
+    if args.plot_initial_gaussian_fit: shamfi_plotting.plot_gaussian_fit(shpcoord,save_tag)
 
-    ##Set up the grids over which to fit b1 and b2
+    # ##Set up the grids over which to fit b1 and b2
     b1_grid = linspace((b1_min/60.0)*D2R,(b1_max/60.0)*D2R,num_beta_points)
     b2_grid = linspace((b2_min/60.0)*D2R,(b2_max/60.0)*D2R,num_beta_points)
 
     print('b1_range is',(b1_grid / D2R)*60.0)
     print('b2_range is',(b2_grid / D2R)*60.0)
+    #
+    ##Calculate a restoring beam kernel to convolve the basis functions with
+    fits_data.create_restoring_kernel()
 
-    ##Figure out a restoring beam kernel to convolve the basis functions with
-    rest_gauss_kern = create_restoring_kernel(rest_bmaj,rest_bmin,rest_pa,ra_reso,dec_reso)
+    ##setup a shapelet fitting object
+    shapelet_fitter = shapelets.FitShapelets(fits_data=fits_data,shpcoord=shpcoord)
 
-    ##Number of coeffs up to order nmax
-    total_coeffs = 0.5*(nmax+1)*(nmax+2)
-    b1,b2,best_b1_ind,best_b2_ind,n1s,n2s,fitted_coeffs,fit_data_full,xrot,yrot,matrix_plot = do_grid_search_fit(total_coeffs,
-                                                                                              flat_data,b1_grid,b2_grid,
-                                                                                              pa,nmax,rest_gauss_kern,data,
-                                                                                              pixel_inds_to_use,args,
-                                                                                              num_beta_points,ras,decs)
+    ##TODO make switching off the output FITS file a parser arguement
+    shapelet_fitter.do_grid_search_fit(b1_grid, b2_grid, nmax, save_tag=save_tag)
+
+    ##TODO make switching this plotting off a parser arguement
+    shamfi_plotting.plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=args.plot_edge_pad)
 
     ##Plot the grid residual search if you want
     if args.plot_resid_grid:
-        plot_grid_search(matrix_plot,num_beta_points,b1_grid,b2_grid,save_tag)
-        savez_compressed('%s_grid.npz' %save_tag,matrix_plot=matrix_plot,b1_grid=b1_grid,b2_grid=b2_grid)
+        shamfi_plotting.plot_grid_search(shapelet_fitter, save_tag)
+        # savez_compressed('%s_grid.npz' %save_tag,matrix_plot=shapelet_fitter.residuals_array,
+        #     b1_grid=shapelet_fitter.b1_grid,b2_grid=shapelet_fitter.b2_grid)
 
-    ##Write srclists if needed
-    if args.rts_srclist:
-        save_srclist(save_tag=save_tag+'_nmax%03d_p100' %nmax, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
-            fitted_model=fit_data_full, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-            pix_area=pix_area_rad)
+    apply_srclist_option(args,shapelet_fitter,save_tag)
 
-    if args.woden_srclist:
-        save_srclist(save_tag=save_tag+'_nmax%03d_p100' %nmax, nmax=nmax, n1s=n1s, n2s=n2s, fitted_coeffs=fitted_coeffs, b1=b1, b2=b2,
-            fitted_model=fit_data_full, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-            pix_area=pix_area_rad,rts_srclist=False)
-
+    ##Do some compression if you fancy it
     if args.compress:
+        ##order the basis functions by their absolute flux contribution to the model
+        shapelet_fitter.find_flux_order_of_basis_functions()
 
-        compressed_images = []
-
-        _, _, A_shape_basis = gen_A_shape_matrix(xrot=xrot,yrot=yrot,nmax=nmax,b1=b1,b2=b2,convolve_kern=rest_gauss_kern,shape=data.shape)
-        ##Sort the basis functions by highest absolute flux contribution to the model
-        basis_sums, sums_order = order_basis_by_flux(fitted_coeffs,A_shape_basis)
-
+        ##For each level of compression, do a grid search
         for compress_value in compress_values:
-            print('--------------------------------------')
-            print('Running compression at %.1f%%' %compress_value)
+            ##TODO make switching off the output FITS file a parser arguement
+            shapelet_fitter.do_grid_search_fit_compressed(compress_value,save_tag=save_tag)
 
-            ##Compress the basis functions by only including the basis functions that contribute up to some percentage of
-            ##the overall flux of the model
-            n1s_compressed,n2s_compressed,fitted_coeffs_compressed,order = compress_by_flux_percentage(basis_sums, sums_order, compress_value, n1s, n2s, fitted_coeffs)
+            ##TODO make switching this plotting off a parser arguement
+            shamfi_plotting.plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=args.plot_edge_pad)
 
-            ##Do grid based fitting again in case a better b1,b2 combo works with the compressed coeffs
-            b1_compressed,b2_compressed,n1s_compressed,n2s_compressed, \
-            fitted_coeffs_compressed,fit_data_compressed,xrot_compressed, \
-            yrot_compressed,matrix_plot_compressed = do_grid_search_fit(len(n1s_compressed),flat_data,b1_grid,b2_grid,pa,nmax,
-                                                                           rest_gauss_kern,data,pixel_inds_to_use,args,
-                                                                           num_beta_points,ras,decs,full_fit=False,
-                                                                           n1s_compressed=n1s_compressed,n2s_compressed=n2s_compressed)
+            ##Plot the grid residual search if you want
+            if args.plot_resid_grid:
+                shamfi_plotting.plot_grid_search(shapelet_fitter, save_tag)
+                # savez_compressed('%s_grid.npz' %save_tag,matrix_plot=shapelet_fitter.residuals_array,
+                #     b1_grid=shapelet_fitter.b1_grid,b2_grid=shapelet_fitter.b2_grid)
 
-            ##Collect fitted images to plot later on
-            compressed_images.append(fit_data_compressed)
-            ##Write out srclists if asked for
-            if args.rts_srclist:
-                save_srclist(save_tag=save_tag+'_nmax%03d_p%03d' %(nmax,compress_value), nmax=nmax,
-                    n1s=n1s_compressed, n2s=n2s_compressed, fitted_coeffs=fitted_coeffs_compressed, b1=b1, b2=b2,
-                    fitted_model=fit_data_compressed, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-                    pix_area=pix_area_rad)
-
-            if args.woden_srclist:
-                save_srclist(save_tag=save_tag+'_nmax%03d_p%03d' %(nmax,compress_value), nmax=nmax,
-                    n1s=n1s_compressed, n2s=n2s_compressed, fitted_coeffs=fitted_coeffs_compressed, b1=b1, b2=b2,
-                    fitted_model=fit_data_compressed, ra_cent=ra_cent, dec_cent=dec_cent, freq=freq, pa=pa,
-                    pix_area=pix_area_rad, rts_srclist=False)
-
-        ##Plot the results
-        plot_compressed_fits(args, compressed_images, flat_data, data.shape, pixel_inds_to_use,
-                          save_tag, compress_values, nmax)
-
-    ##Doing the plots and stuff changes the shape of some arrays, so run all finals
-    ##FITS and plot generation after compression
-    save_output_FITS(args.fits_file,fit_data_full,data.shape,save_tag,nmax,edge_pad,len1,len2,convert2pixel)
-    masked_data_plot = plot_full_fit(args, fit_data_full, flat_data.flatten(), data.shape, pixel_inds_to_use, save_tag, nmax, popt, pa, b1, b2, rest_gauss_kern, fitted_coeffs)
+            apply_srclist_option(args,shapelet_fitter,save_tag)

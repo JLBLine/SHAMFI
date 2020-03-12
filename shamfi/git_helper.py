@@ -25,7 +25,17 @@ def get_commandline_output(command_list):
     return output
 
 def make_gitdict():
-    '''Makes a dictionary containing key git information about the repo'''
+    """
+    Makes a dictionary containing key git information about the repo by running
+    specific commands on the command line
+
+    Returns
+    -------
+    git_dict : dictionary
+        A dictionary containing git information with keywords: describe, date,
+        branch
+
+    """
 
     git_dict = {
         'describe': get_commandline_output(["git", "describe", "--always"]),
@@ -36,9 +46,17 @@ def make_gitdict():
     return git_dict
 
 def get_gitdict():
-    '''Get the git dictionary that was created by setup.py and
-    grab information from it'''
-    # json_loc = pkg_resources.resource_filename("shamfi", "shamfi_gitinfo.json")
+    """
+    Get the git dictionary that was created by setup.py and/or during pip install
+    and was stored in a json file
+
+    Returns
+    -------
+    git_dict : dictionary
+        A dictionary containing git information with keywords: describe, date,
+        branch
+
+    """
     json_loc = os.path.join(__path__[0],"shamfi_gitinfo.json")
 
     with open(json_loc,'r') as json_file:
@@ -47,8 +65,15 @@ def get_gitdict():
     return git_dict
 
 def write_git_header(outfile):
-    '''Takes an output textfile and writes a git summary at the top, commented
-    with #'''
+    """
+    Takes a textfile and writes a git summary at the top, commented with #
+
+    Parameters
+    ----------
+    outfile : text file instance
+        Text file that gets useful version information appended to it
+
+    """
     git_dict = get_gitdict()
 
     outfile.write('## Written with SHAMFI (Copyright (c) J. L. B. Line)\n')
@@ -57,8 +82,17 @@ def write_git_header(outfile):
     outfile.write('## Git branch: %s\n' %(git_dict['branch']))
 
 def print_version_info(script_loc):
-    '''Takes the location of the script calling this function, and prints
-    out the useful git information'''
+    """
+    Takes the location of the script calling this function, and prints
+    out useful git information
+
+    Parameters
+    ----------
+    script_loc : string
+        Absolute path of the file calling this function
+
+    """
+    ''''''
     git_dict = get_gitdict()
 
     print('This is SHAMFI version %s (Copyright (c) J. L. B. Line)' %__version__)
