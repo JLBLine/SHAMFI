@@ -1,0 +1,6 @@
+################
+shapelets
+################
+
+.. automodule:: shapelets
+  :members:

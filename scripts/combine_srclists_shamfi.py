@@ -12,13 +12,16 @@ def get_parser():
               --srclist=srclist_one.txt --srclist=srclist_two.txt --srclist=srclist_three.txt')
     parser.add_argument('--outname',default='srclist_combined',
         help='Name for output srclist - defaults to "srclist_combined"+woden or rts')
+    parser.add_argument('--source_name',default='combined_source',
+        help='Name for combined source in srclist - defalts to "combined_source"')
 
     return parser
 
 if __name__ == '__main__':
 
-    from shamfi.shamfi_lib import *
+    from shamfi.srclists import *
     from shamfi.git_helper import *
+    from shamfi.check_files import *
     import argparse
     from sys import exit
 
@@ -76,4 +79,4 @@ if __name__ == '__main__':
         for srclist in srclists:
             all_RTS_sources = get_RTS_sources(srclist, all_RTS_sources)
 
-        write_singleRTS_from_RTS_sources(all_RTS_sources, outname)
+        write_singleRTS_from_RTS_sources(all_RTS_sources, outname, name=args.source_name)

@@ -22,8 +22,9 @@ def get_parser():
 
 if __name__ == '__main__':
 
-    from shamfi.shamfi_lib import *
+    from shamfi.srclists import *
     from shamfi.git_helper import *
+    from shamfi.check_files import *
     import argparse
     from numpy import array,where,arange
 
