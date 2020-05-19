@@ -173,7 +173,7 @@ def make_masked_image(flat_data,shapelet_fitter):
 
 def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
     """
-    Take a :class:FitShapelets class that has been run, and plot the results.
+    Take a :class:`FitShapelets` class that has been run, and plot the results.
     Plots the data with top left, fit top right, and residuals bottom left.
     Optionally, plot an edge padded version of the final fit bottom right - useful
     to check that unconstrained areas outside of the fitting region haven't ended up

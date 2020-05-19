@@ -242,6 +242,15 @@ def gen_A_shape_matrix(n1s=None,n2s=None,xrot=None,yrot=None,nmax=None,b1=None,b
     shape : tuple
         The 2D shape of the image being modelled, needed if convolving with a kernel
 
+    Returns
+    -------
+    n1s : array
+        The first orders of the basis functions to generate
+    n2s : array
+        The second orders of the basis function to generate
+    A_shape_basis : 2D array
+        The generated 2D 'A' matrix
+
     """
 
     A_shape_basis = zeros((len(xrot),len(n1s)))
@@ -279,6 +288,17 @@ def gen_A_shape_matrix_direct(n1s=None, n2s=None, xrot=None, yrot=None, b1=None,
         A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
     shape : tuple
         The 2D shape of the image being modelled, needed if convolving with a kernel
+
+    Returns
+    -------
+    checked_n1s : array
+        The first orders of the basis functions to generate - checks for any
+        errors when generating the basis functions and omits those n1,n2 values
+    checked_n2s : array
+        The second orders of the basis function to generate - checks for any
+        errors when generating the basis functions and omits those n1,n2 values
+    A_shape_basis : 2D array
+        The generated 2D 'A' matrix
 
     """
     A_shape_basis = zeros((len(xrot),len(n1s)))
