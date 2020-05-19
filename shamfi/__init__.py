@@ -10,8 +10,8 @@ source catalogues
 
 """
 __author__ = 'Jack Line'
-__version__ = '0.1b'
-__date__ = '2020-28-01'
+__version__ = '0.1'
+__date__ = '2020-05-19'
 __cite__ = """
 % If you use SHAMFI in your work, please cite the following paper:
 

@@ -59,7 +59,7 @@ reqs = ['matplotlib>=2.2.4',
 
 setup(
     name="shamfi",
-    version='0.1b',
+    version='0.1',
     author="Jack Line",
     author_email="jack.l.b.line@gmail.com",
     description="The SHAMFI shapelet fitted code and associated scripts",

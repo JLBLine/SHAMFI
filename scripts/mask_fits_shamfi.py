@@ -26,7 +26,8 @@ if __name__ == '__main__':
 
     from astropy.io import fits
     from numpy import *
-    from shamfi.shamfi_lib import add_colourbar,twoD_Gaussian
+    from shamfi.shamfi_plotting import add_colourbar
+    from shamfi.shapelet_coords import twoD_Gaussian
     from shamfi.git_helper import *
     import matplotlib.pyplot as plt
     import scipy.optimize as opt
@@ -35,6 +36,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     def make_gauss_mask(low_x,high_x,low_y,high_y):
+        """
+        Takes boundaries in pixel values and fits a 2D Gaussian within them.
+        Returns a 2D array of the fitted Gaussian.
+        """
 
         new_data = zeros(data.shape)
         edge = 1
@@ -60,7 +65,7 @@ if __name__ == '__main__':
 
         return mask
 
-    ##Get the x and y size of the image
+    ##Get some data
     with fits.open(args.fits_file) as hdu:
 
         data_shape = len(hdu[0].data.shape)
@@ -78,9 +83,8 @@ if __name__ == '__main__':
     x_mesh,y_mesh = meshgrid(arange(xlen),arange(ylen))
 
 
-
+    ##Loop through user defined boxes, fit Gaussian, and create masks
     masks = []
-
     for box in args.box:
         low_x,high_x,low_y,high_y = map(int,box.split(','))
 
@@ -108,6 +112,7 @@ if __name__ == '__main__':
     ax1.set_yticks([])
     ax1.set_title('Fitted masks')
 
+    ##Loop through masks, apply them to the data and write out to FITS file
     for ind,mask in enumerate(masks):
 
         with fits.open(args.fits_file) as hdu:

@@ -7,32 +7,14 @@ from copy import deepcopy
 from astropy.io import fits
 import warnings
 from astropy.utils.exceptions import AstropyWarning
-
 from shamfi.git_helper import get_gitdict, write_git_header
 from shamfi import shamfi_plotting
-
 from scipy.signal import fftconvolve
 
-# import matplotlib
-# ##useful when using a super cluster to specify Agg
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# from scipy.special import factorial,eval_hermite
-#
-# from mpl_toolkits.axes_grid1 import make_axes_locatable
-# from matplotlib.axes import Axes
-# from numpy import abs as np_abs
-# from astropy.wcs import WCS
-# from sys import exit
-# import scipy.optimize as opt
-#
-
-# import os
-# from astropy.modeling.models import Gaussian2D
-
-# from subprocess import check_output
-
-#
+try:
+    from scipy.special import factorial,eval_hermite
+except:
+    print('Could not import scipy.special.factorial - you will not be able to use the function gen_shape_basis_direct')
 
 ##Convert degress to radians
 D2R = pi/180.
@@ -63,9 +45,35 @@ basis_matrix = image_shapelet_basis['basis_matrix']
 gauss_array = image_shapelet_basis['gauss_array']
 
 def gen_shape_basis_direct(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
-    '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
-    at the given coords xrot,yrot
-    b1,b2 should be in radians'''
+    """
+    Directly generates the shapelet basis function for given n1,n2,b1,b2 parameters,
+    at the given coords xrot,yrot. b1,b2 should be in radians. Uses scipy to generate
+    factorials and hermite polynomials
+
+    Parameters
+    ----------
+    n1 : int
+        The first order of the basis function to generate
+    n2 : int
+        The second order of the basis function to generate
+    xrot : numpy array
+        1D array of the x-coords to generate the basis functions at
+    yrot : numpy array
+        1D array of the y-coords to generate the basis functions at
+    b1 : float
+        The major axis beta scaling parameter (radians)
+    b2 : float
+        The minor axis beta scaling parameter (radians)
+    convolve_kern : 2D numpy array
+        A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
+    shape : tuple
+        The 2D shape of the image being modelled, needed if convolving with a kernel
+
+    Returns
+    -------
+    basis : numpy array
+        A 1D array of the values of the basis function
+    """
 
     this_xrot = deepcopy(xrot)
     this_yrot = deepcopy(yrot)
@@ -100,8 +108,28 @@ def gen_shape_basis_direct(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,c
     return basis
 
 def interp_basis(xrot=None,yrot=None,n1=None,n2=None):
-    '''Uses basis lookup tables to generate 2D shapelet basis function for given
-    xrot, yrot coords and n1,n2 orders'''
+    """
+    Uses basis lookup tables to generate 2D shapelet basis function for given
+    xrot, yrot coords and n1,n2 orders. Does NOT include the b1,b2 normalisation,
+    this is applied by the function gen_shape_basis
+
+    Parameters
+    ----------
+    n1 : int
+        The first order of the basis function to generate
+    n2 : int
+        The second order of the basis function to generate
+    xrot : numpy array
+        1D array of the x-coords to generate the basis functions at
+    yrot : numpy array
+        1D array of the y-coords to generate the basis functions at
+
+    Returns
+    -------
+    basis : numpy array
+        A 1D array of the values of the basis function
+    """
+
     xpos = xrot / XRES + XCENT
     xindex = floor(xpos)
     xlow = basis_matrix[n1,xindex.astype(int)]
@@ -129,9 +157,35 @@ def interp_basis(xrot=None,yrot=None,n1=None,n2=None):
     return x_val*y_val*gx_val*gy_val
 
 def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
-    '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
-    using lookup tables, at the given coords xrot,yrot
-    b1,b2 should be in radians'''
+    """
+    Generates the shapelet basis function for given n1,n2,b1,b2 parameters, using
+    lookup tables and interpolation, at the given coords xrot,yrot.
+    b1,b2 should be in radians.
+
+    Parameters
+    ----------
+    n1 : int
+        The first order of the basis function to generate
+    n2 : int
+        The second order of the basis function to generate
+    xrot : numpy array
+        1D array of the x-coords to generate the basis functions at
+    yrot : numpy array
+        1D array of the y-coords to generate the basis functions at
+    b1 : float
+        The major axis beta scaling parameter (radians)
+    b2 : float
+        The minor axis beta scaling parameter (radians)
+    convolve_kern : 2D numpy array
+        A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
+    shape : tuple
+        The 2D shape of the image being modelled, needed if convolving with a kernel
+
+    Returns
+    -------
+    basis : numpy array
+        A 1D array of the values of the basis function
+    """
 
     ##Ensure n1,n2 are ints
     n1 = int(n1)
@@ -160,19 +214,73 @@ def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve
     return basis*norm
 
 def gen_A_shape_matrix(n1s=None,n2s=None,xrot=None,yrot=None,nmax=None,b1=None,b2=None,convolve_kern=False,shape=False):
-    '''Setup the A matrix used in the linear least squares fit of the basis functions. Works out all
-    valid n1,n2 combinations up to nmax'''
+    """
+    Generates the 'A' matrix in Ax = b when fitting shapelets, where:
+
+     - b = 1D matrix of data points to mode
+     - x = 1D matrix containing coefficients for basis functions
+     - A = 2D matrix containg shapelet basis function values
+
+    Generates basis function values using a lookup table method
+
+    Parameters
+    ----------
+    n1s : array
+        The first orders of the basis functions to generate
+    n2s : array
+        The second orders of the basis function to generate
+    xrot : numpy array
+        1D array of the x-coords to generate the basis functions at
+    yrot : numpy array
+        1D array of the y-coords to generate the basis functions at
+    b1 : float
+        The major axis beta scaling parameter (radians)
+    b2 : float
+        The minor axis beta scaling parameter (radians)
+    convolve_kern : 2D numpy array
+        A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
+    shape : tuple
+        The 2D shape of the image being modelled, needed if convolving with a kernel
+
+    """
 
     A_shape_basis = zeros((len(xrot),len(n1s)))
     for index,n1 in enumerate(n1s):
         A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
-
         ##TODO can check quality of generated basis functions here and remove if necessary
 
     return n1s, n2s, A_shape_basis
 
 def gen_A_shape_matrix_direct(n1s=None, n2s=None, xrot=None, yrot=None, b1=None, b2=None, convolve_kern=False, shape=False):
-    '''Setup the A matrix used in the linear least squares fit of the basis functions.'''
+    """
+    Generates the 'A' matrix in Ax = b when fitting shapelets, where:
+
+     - b = 1D matrix of data points to mode
+     - x = 1D matrix containing coefficients for basis functions
+     - A = 2D matrix containg shapelet basis function values
+
+    Generates the basis functions directly using scipy
+
+    Parameters
+    ----------
+    n1s : array
+        The first orders of the basis functions to generate
+    n2s : array
+        The second orders of the basis function to generate
+    xrot : numpy array
+        1D array of the x-coords to generate the basis functions at
+    yrot : numpy array
+        1D array of the y-coords to generate the basis functions at
+    b1 : float
+        The major axis beta scaling parameter (radians)
+    b2 : float
+        The minor axis beta scaling parameter (radians)
+    convolve_kern : 2D numpy array
+        A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
+    shape : tuple
+        The 2D shape of the image being modelled, needed if convolving with a kernel
+
+    """
     A_shape_basis = zeros((len(xrot),len(n1s)))
 
     checked_n1s = []
@@ -198,6 +306,19 @@ def gen_A_shape_matrix_direct(n1s=None, n2s=None, xrot=None, yrot=None, b1=None,
     return checked_n1s, checked_n2s, A_shape_basis
 
 class FitShapelets():
+    """
+    This class takes in FITS data and fitting parameters, and sets up and
+    performs shapelet model fitting and generation. The main work-horse of the
+    SHAMFI package
+
+    Parameters
+    ----------
+    fits_data : shamfi.read_FITS_image.FITSInformation instance
+        A :class:`FITSInformation` class containing the data to be fit
+    shpcoord : shamfi.shapelet_coords.ShapeletCoords instance
+        A :class:`ShapeletCoords` class containing the shapelet coordinate system
+
+    """
     def __init__(self,fits_data=False,shpcoord=False):
         if fits_data:
             pass
@@ -221,6 +342,30 @@ class FitShapelets():
     def do_grid_search_fit(self, b1_grid, b2_grid, nmax,
                            pa=False, convolve_kern=False,
                            save_FITS=True, save_tag='shapelet'):
+        """
+        Do a grid search over all b1, b2 values specified in b1_grid, b2_grid,
+        fitting all basis functions up to nmax, donig a least squares
+        minimisation for each combination of b1, b2 to generate models
+
+        Parameters
+        ----------
+        b1_grid : array
+            A range of major axis beta scaling parameters to fit over
+        b2_grid :
+            A range of minor axis beta scaling parameters to fit over
+        nmax : int
+            The maximum order of basis function to generate up to
+        pa : float
+            If provided, use this postion angle to rotate the basis functions, instead of that found when fitting a Gaussian using shamfi.shapelet_coords.ShapeletCoords.fit_gauss_and_centre_coords
+        convolve_kern : 2D numpy array
+            If provided, use this convolution kernel instead of the restoring beam of the CLEANed image
+        save_FITS: bool
+            Save the fitted shapelet model image to a FITS file
+        save_tag : string
+            A tag to add into the file name to save the plot to
+
+        """
+
         ##If a different pa is specified use that, otherwise use the pa during
         ##the intial gaussian fit by shpcoord
         if pa:
@@ -273,7 +418,7 @@ class FitShapelets():
 
         ##Run full nmax fits over range of b1,b2 using progressbar to, well, show progress
         for b1_ind,b2_ind in progressbar(self.b_inds,prefix='Fitting shapelets: '):
-            self.do_fitting(b1_ind, b2_ind, self.pa)
+            self._do_fitting(b1_ind, b2_ind, self.pa)
 
         ##When running with self.do_grid_search_fit fitting is automatically done at
         ##100 percent of basis functions. Percentage is written in names of
@@ -287,10 +432,11 @@ class FitShapelets():
             self._save_output_FITS(full_model, save_tag)
 
 
-    def do_fitting(self, b1_ind, b2_ind, pa):
-        '''Takes the data and fits shapelet basis functions to them. Uses the given
+    def _do_fitting(self, b1_ind, b2_ind, pa):
+        """Takes the data and fits shapelet basis functions to them. Uses the given
         b1, b2 to scale the x,y coords, nmax to create the number of basis functions,
-        and the rest_gauss_kern to apply to restoring beam to the basis functions'''
+        and the rest_gauss_kern to apply to restoring beam to the basis functions
+        """
 
         ##Select the correct beta params
         b1, b2 = self.b1_grid[b1_ind], self.b2_grid[b2_ind]
@@ -431,6 +577,9 @@ class FitShapelets():
         return shape_coeffs
 
     def _get_best_params(self):
+        """
+        Find the b1, b2 parameter for the model that left the smallest residuals
+        """
         ##Find the minimum point
         best_b1_ind,best_b2_ind = where(self.residuals_array == nanmin(self.residuals_array))
 
@@ -504,7 +653,20 @@ class FitShapelets():
             hdu.writeto('shamfi_%s_nmax%03d_p%03d.fits' %(save_tag,self.nmax,int(self.model_percentage)), overwrite=True)
 
     def save_srclist(self, save_tag='shapelet', rts_srclist=True, woden_srclist=True):
-        '''Take the fitted parameters and creates an RTS/WODEN style srclist with them'''
+        """
+        Uses the best fitted parameters and creates an RTS/WODEN style
+        srclist with them, saved as text files
+
+        Parameters
+        ----------
+        save_tag : string
+            A tag to add into the file name to save the plot to
+        rts_srclist : bool
+            If True, save a sky model compatible with the RTS (Mitchell et al, 2008)
+        woden_srclist : bool
+            If True, save a sky model compatible with WODEN (Line et al, 2020)
+
+        """
 
         all_flux = sum(self.fit_data)
         print('Total flux in convolved model is %.2f' %all_flux)
@@ -544,6 +706,15 @@ class FitShapelets():
                 outfile.write('ENDSOURCE\n')
 
     def find_flux_order_of_basis_functions(self):
+        """
+        After fitting models, this function orders the fitted basis functions
+        by absolution value in image space, to find those that contribute the
+        most flux. To do this an 'A' matrix has to be generated to create an
+        image
+
+        :ivar array basis_sums: an array containing the sum of the flux of each basis function
+        :ivar array sums_order: an array of the argsorted index of the sums of the flux of each basis function
+        """
         xrot,yrot = self.shpcoord.radec2xy(self.best_b1, self.best_b2, crop=False)
         _, _, A_shape_basis = self._gen_A_shape_matrix(xrot=xrot,yrot=yrot,b1=self.best_b1,b2=self.best_b2)
         ##Sort the basis functions by highest absolute flux contribution to the model
@@ -596,6 +767,22 @@ class FitShapelets():
         self.n2s = self.full_fit_n2s[order_high]
 
     def do_grid_search_fit_compressed(self, compress_value, save_FITS=True, save_tag='shapelet'):
+        """
+        Do a grid search over all b1, b2 values for a given compression value.
+        Can only be run after fitting the full model, via `self.do_grid_search_fit`
+        so all b1,b2,nmax options have already been set and stored internally
+        to the class.
+
+        Parameters
+        ----------
+        compress_value: float
+            A value to compress (truncate) the fit results to (percentage, e.g. 80 for 80%)
+        save_FITS: bool
+            Save the fitted shapelet model image to a FITS file
+        save_tag : string
+            A tag to add into the file name to save the plot to
+
+        """
 
         ##As we are compressing based on results from self.do_grid_search_fit,
         ##use the same pa,b1_grid,b2_grid, convolve_kernel. No need to reset
@@ -619,7 +806,7 @@ class FitShapelets():
 
         ##Run full nmax fits over range of b1,b2 using progressbar to, well, show progress
         for b1_ind,b2_ind in progressbar(self.b_inds,prefix='Fitting shapelets: '):
-            self.do_fitting(b1_ind, b2_ind, self.pa)
+            self._do_fitting(b1_ind, b2_ind, self.pa)
 
         self._get_best_params()
 

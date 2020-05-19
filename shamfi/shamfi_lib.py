@@ -41,13 +41,6 @@ factor = 2. * sqrt(2.*log(2.))
 ##converts between FWHM and std dev for the RTS
 rts_factor = sqrt(pi**2 / (2.*log(2.)))
 
-# ##Find where this file is so we can find the basis functions
-# fileloc = os.path.realpath(__file__)
-# if fileloc[-1] == 'c':
-#     fileloc = fileloc.replace('shamfi_lib.pyc', '')
-# else:
-#     fileloc = fileloc.replace('shamfi_lib.py', '')
-
 ##Use package manager to get hold of the basis functions
 basis_path = pkg_resources.resource_filename("shamfi", "image_shapelet_basis.npz")
 
@@ -57,8 +50,33 @@ basis_matrix = image_shapelet_basis['basis_matrix']
 gauss_array = image_shapelet_basis['gauss_array']
 
 def twoD_Gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta):
-    '''Model for a 2D gaussian  - flattens it to make
-    fitting more straight forward'''
+    """
+    Creates a model for a 2D Gaussian, by taking two 2D coordinate arrays in x,y.
+    Returns a flattened array of the model to make fitting more straight forward
+
+    Parameters
+    ----------
+    xy : list containing two 2D numpy arrays
+        A list containing the x and y coordinates to calculate the gaussian at.
+        x and y are separated into individual 2D arrays. xy = [x(2D), y(2D)]
+    amplitude : float
+        Amplitude to scale the Gaussian by
+    xo : float
+        Value of the central x pixel
+    yo : float
+        Value of the central y pixel
+    sigma_x : float
+        Sigma value for the x dimension
+    sigma_y : float
+        Sigma value for the y dimension
+    theta : float
+        Rotation angle (radians)
+
+    Returns
+    -------
+    gaussian.flatten() : numpy array (floats)
+        A 2D gaussian model, flattened into a 1D numpy array
+    """
 
     x,y = xy
 
@@ -67,12 +85,28 @@ def twoD_Gaussian(xy, amplitude, xo, yo, sigma_x, sigma_y, theta):
     a = (cos(theta)**2)/(2*sigma_x**2) + (sin(theta)**2)/(2*sigma_y**2)
     b = -(sin(2*theta))/(4*sigma_x**2) + (sin(2*theta))/(4*sigma_y**2)
     c = (sin(theta)**2)/(2*sigma_x**2) + (cos(theta)**2)/(2*sigma_y**2)
-    g = amplitude*exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo)
+    gaussian = amplitude*exp( - (a*((x-xo)**2) + 2*b*(x-xo)*(y-yo)
                             + c*((y-yo)**2)))
-    return g.flatten()
+    return gaussian.flatten()
 
 def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
-    '''Adds a colourbar in a nice way to a sublot'''
+    """
+    Adds a colourbar (colorbar, fine) in a nice way to a subplot
+
+    Parameters
+    ----------
+    fig : matplotlib.pyplot.figure instance
+        The figure that the plot lives on
+    ax : figure.add_subplot instance
+        The axis to append a colorbar to
+    im : ax.imshow output
+        The output of imshow to base the colourbar on
+    label : string
+        Optional - add a label to the colorbar
+    top : Bool
+        Optional - put the colorbar above the axis instead of to the right
+    """
+
     divider = make_axes_locatable(ax)
     if top == True:
         cax = divider.append_axes("top", size="5%", pad=0.05,axes_class=Axes)
@@ -358,7 +392,15 @@ def get_conert2pixel(header):
     bmaj = float(header['BMAJ'])
     bmin = float(header['BMIN'])
     solid_beam = (pi*bmaj*bmin) / (4*log(2))
-    solid_pixel = abs(float(header['CDELT1'])*float(header['CDELT2']))
+
+    try:
+        ra_reso = abs(float(header['CDELT1']))
+        dec_reso = float(header['CDELT2'])
+    except:
+        ra_reso = abs(float(header['CD1_1']))
+        dec_reso = float(header['CD2_2'])
+
+    solid_pixel = abs(ra_reso*dec_reso)
     convert2pixel = solid_pixel/solid_beam
 
     return convert2pixel
@@ -368,11 +410,15 @@ def get_frequency(freq,header):
     associated value, or it just formates the freq arg'''
     ##If freq provided by user, use that value
     ##If not, try and find it from the header of the FITS
+
     if freq == 'from_FITS':
-        ctypes = header['CTYPE*']
-        for ctype in ctypes:
-            if header[ctype] == 'FREQ':
-                freq = float(header['CRVAL%d' %(int(ctype[-1]))])
+        try:
+            freq = float(header['FREQ'])
+        except:
+            ctypes = header['CTYPE*']
+            for ctype in ctypes:
+                if header[ctype] == 'FREQ':
+                    freq = float(header['CRVAL%d' %(int(ctype[-1]))])
     else:
         freq = float(freq)
 
@@ -394,18 +440,29 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
 
         zero_index = 0
 
+        try:
+            ra_reso = float(header['CDELT1'])
+            dec_reso = float(header['CDELT2'])
+        except:
+            ra_reso = float(header['CD1_1'])
+            dec_reso = float(header['CD2_2'])
+
+        len1 = int(hdu[0].header['NAXIS1'])
+        len2 = int(hdu[0].header['NAXIS2'])
+
+
         ##If we need to add zero-padding around the image, do this here
         if edge_pad:
 
-            ras = (arange(zero_index,(int(header['NAXIS1'])+edge_pad*2+zero_index)) - (int(header['CRPIX1'])+edge_pad))*float(header['CDELT1'])
-            decs = (arange(zero_index,(int(header['NAXIS2'])+edge_pad*2+zero_index)) - (int(header['CRPIX2'])+edge_pad))*float(header['CDELT2'])
-            pad_image = zeros((int(header['NAXIS1'])+edge_pad*2,int(header['NAXIS2'])+edge_pad*2))
+            ras = (arange(zero_index,(len1+edge_pad*2+zero_index)) - (int(header['CRPIX1'])+edge_pad))*ra_reso
+            decs = (arange(zero_index,(len2+edge_pad*2+zero_index)) - (int(header['CRPIX2'])+edge_pad))*dec_reso
+            pad_image = zeros((len1+edge_pad*2,len2+edge_pad*2))
             pad_image[edge_pad:data.shape[0]+edge_pad,edge_pad:data.shape[1]+edge_pad] = data
             data = pad_image
 
         else:
-            ras = (arange(zero_index,int(header['NAXIS1'])+zero_index) - int(header['CRPIX1']))*float(header['CDELT1'])
-            decs = (arange(zero_index,int(header['NAXIS2'])+zero_index) - int(header['CRPIX2']))*float(header['CDELT2'])
+            ras = (arange(zero_index,len1+zero_index) - int(header['CRPIX1']))*ra_reso
+            decs = (arange(zero_index,len2+zero_index) - int(header['CRPIX2']))*dec_reso
 
         ##Get the ra,dec range for all pixels
         ras_mesh,decs_mesh = meshgrid(ras,decs)
@@ -439,20 +496,14 @@ def get_fits_info(fitsfile,edge_pad=False,freq=None):
             print('Assuming BMAJ,BMIN = %.3f,%.3f' %(bmaj,bmin))
 
         solid_beam = (pi*rest_bmaj*rest_bmin) / (4*log(2))
-        solid_pixel = abs(float(header['CDELT1'])*float(header['CDELT2']))
+        solid_pixel = abs(ra_reso)*dec_reso
 
         convert2pixel = solid_pixel/solid_beam
-
-        ra_reso = abs(float(header['CDELT1']))
-        dec_reso = float(header['CDELT2'])
-
-        len1 = hdu[0].header['NAXIS1']
-        len2 = hdu[0].header['NAXIS2']
 
         wcs = WCS(hdu[0].header)
         dims = len(hdu[0].data.shape)
 
-    return data,flat_data,ras,decs,convert2pixel,ra_reso,dec_reso,freq,len1,len2,wcs,dims,rest_bmaj,rest_bmin,rest_pa
+    return data,flat_data,ras,decs,convert2pixel,abs(ra_reso),dec_reso,freq,len1,len2,wcs,dims,rest_bmaj,rest_bmin,rest_pa
 
 def order_basis_by_flux(coeffs,A_matrix):
     '''Go through all basis functions values in the A_matrix, multiply by the
@@ -550,7 +601,7 @@ def plot_gaussian_fit(ra_mesh, dec_mesh, popt, data, save_tag):
 
     fig.savefig('pa_fit_%s.png' %save_tag ,bbox_inches='tight')
 
-def find_good_pixels(args,edge_pad,flat_data,x_len):
+def find_good_pixels(args,edge_pad,flat_data,x_len,ignore_negative=False):
     '''Uses the specified arguments to come up with an array of pixel indexes
     to fit'''
     ##If a box is specified, limit pixels to within that box
@@ -588,6 +639,12 @@ def find_good_pixels(args,edge_pad,flat_data,x_len):
                 pixel_inds_to_use = arange(len(flat_data))
                 print('Failed to convert --exclude_box into something \
                       sensible. Will fit using all pixels in image')
+
+    if ignore_negative:
+        fluxes = flat_data[pixel_inds_to_use]
+        pixel_inds_to_use = pixel_inds_to_use[where(fluxes >= 0.0)]
+    else:
+        pass
 
     return pixel_inds_to_use
 
@@ -1096,7 +1153,7 @@ def write_woden_from_RTS_sources(RTS_sources,outname):
 
         outfile.write('ENDSOURCE')
 
-def write_singleRTS_from_RTS_sources(RTS_sources,outname):
+def write_singleRTS_from_RTS_sources(RTS_sources,outname,name='combined_name'):
     '''Takes a list RTS_sources containg RTS_source classes, and writes
     them out into a single SOURCE RTS srclist of name outname'''
     with open(outname,'w+') as outfile:
@@ -1105,7 +1162,7 @@ def write_singleRTS_from_RTS_sources(RTS_sources,outname):
         for source_ind,source in enumerate(RTS_sources):
             for comp_ind,comp_info in enumerate(source.component_infos):
                 if source_ind == 0 and comp_ind == 0:
-                    outfile.write('SOURCE combined_source %s %s\n' %(source.ras[comp_ind],source.decs[comp_ind]))
+                    outfile.write('SOURCE %s %s %s\n' %(name,source.ras[comp_ind],source.decs[comp_ind]))
                 else:
                     outfile.write('COMPONENT %s %s\n' %(source.ras[comp_ind],source.decs[comp_ind]))
 

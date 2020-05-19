@@ -13,56 +13,41 @@ R2D = 180./pi
 ##convert between FWHM and std dev for the gaussian function
 FWHM_factor = 2. * sqrt(2.*log(2.))
 
-
-
-
-# import matplotlib
-# ##useful when using a super cluster to specify Agg
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# from scipy.special import factorial,eval_hermite
-
-# from mpl_toolkits.axes_grid1 import make_axes_locatable
-# from matplotlib.axes import Axes
-# from numpy import abs as np_abs
-
-# from sys import exit
-# import scipy.optimize as opt
-# from copy import deepcopy
-# from scipy.signal import fftconvolve
-# import os
-# from astropy.modeling.models import Gaussian2D
-# from progressbar import progressbar
-# from subprocess import check_output
-# import pkg_resources
-# from shamfi.git_helper import get_gitdict, write_git_header
-
-# ##Max x value of stored basis functions
-# xmax = 250
-# ##Number of samples in stored basis functions
-# n_x = 20001
-# ##More basis function values
-# x_cent = int(floor(n_x / 2))
-# xrange = linspace(-xmax,xmax,n_x)
-# xres = xrange[1] - xrange[0]
-#
-# ##convert between FWHM and std dev for the gaussian function
-# factor = 2. * sqrt(2.*log(2.))
-#
-# ##converts between FWHM and std dev for the RTS
-# rts_factor = sqrt(pi**2 / (2.*log(2.)))
-#
-# ##Use package manager to get hold of the basis functions
-# basis_path = pkg_resources.resource_filename("shamfi", "image_shapelet_basis.npz")
-#
-# ##Load the basis functions
-# image_shapelet_basis = load(basis_path)
-# basis_matrix = image_shapelet_basis['basis_matrix']
-# gauss_array = image_shapelet_basis['gauss_array']
-
-
-
 class FITSInformation():
+    """
+    This class reads in data and metadata from a FITS image file, and stores
+    it for use in generating relevant coord systems and data when fitting
+    shapelets. Expects an CLEANed image, testing against WSClean outputs.
+    See attributes for futher functionality, and variables for what can be
+    accessed.
+
+    :param str fitsfile: name of a FITS image file to gather relevant data and metadata from
+    :ivar str fitsfile: the given fitsfile parameter
+    :ivar header: an astropy header instance of the FITS file
+    :ivar array data: a 2D numpy array of the image data
+    :ivar bool read_data: True if successful in reading data
+
+    :ivar float ra_reso: RA resolution (deg)
+    :ivar float dec_reso: Dec resolution (deg)
+    :ivar float pix_area_rad: pixel area (ster radian)
+
+    :ivar int len1: number of pixels in NAXIS1
+    :ivar int len2: number of pixels in NAXIS2
+
+    :ivar wcs: an astropy WCS instance based on self.header
+    :ivar array flat_data: self.data.flatten()
+
+    :ivar float bmaj: restoring beam major axis - if keyword BMAJ not in header, set to None
+    :ivar float bmin: restoring beam minor axis - if keyword BMIN not in header, set to None
+
+    :ivar float solid_beam: solid beam angle: (pi*self.bmaj*self.bmin) / (4*log(2))
+
+    :ivar float convert2pixel: conversion factor need to convert Jy/beam to Jy/pixel
+
+    :ivar bool got_convert2pixel: True if all metadata to create self.convert2pixel was available
+
+
+    """
     def __init__(self,fitsfile):
         try:
             with fits.open(fitsfile) as hdu:
@@ -153,10 +138,15 @@ class FITSInformation():
 
 
     def get_radec_edgepad(self,edge_pad=False):
-        '''Use FITS information to form a values for all of RA, DEC values for this image
+        """
+        Use FITS information to form values of RA, DEC for all pixels in this image
         If specified, edge pad the data with zeros, and add extra RA and DEC
-        range accordingly. Returns RA/DEC in radians'''
+        range accordingly.
 
+        :param int edge_pad: If True, edge pad the data with the specified number of pixels
+        :ivar array ras: RA values of all pixels in image, flattened into a 1D array (radians)
+        :ivar array decs: DEC values of all pixels in image, flattened into a 1D array (radians)
+        """
         ##TODO - this is fine for small images, but for large images projection
         ## I think we should do this using WCS
 
@@ -186,13 +176,20 @@ class FITSInformation():
 
 
     def covert_to_jansky_per_pix(self):
-        '''Apply the conversion from Jy/beam to Jy/pixel on the data'''
+        '''Coverts data in Jy/beam to Jy/pixel as stored in self.data and self.flat_data'''
         self.data *= self.convert2pixel
         self.flat_data *= self.convert2pixel
 
 
     def create_restoring_kernel(self):
-        '''Use the FITS header to create a restoring Gaussian beam kernel'''
+        """
+        Use the FITS header metadata to create 2D restoring Gaussian beam kernel
+        with the height and width of the kernel set to 8 times larger than BMAJ
+
+        :returns: 2D array of the restoring beam at the same resolution of the image. Also stored as self.rest_gauss_kern
+        :rtype: array
+        """
+
         x_stddev = self.bmaj / (FWHM_factor*abs(self.ra_reso))
         y_stddev = self.bmin / (FWHM_factor*self.dec_reso)
 

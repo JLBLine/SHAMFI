@@ -114,8 +114,8 @@ def apply_srclist_option(args,shapelet_fitter,save_tag):
 
 
 if __name__ == '__main__':
-    from sys import path
-    path.append('/home/jline/software/SHAMFI/')
+    # from sys import path
+    # path.append('/home/jline/software/SHAMFI/')
     from shamfi import read_FITS_image, shapelet_coords, shamfi_plotting, shapelets
     from shamfi import __cite__
     from numpy import *

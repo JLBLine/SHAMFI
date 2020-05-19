@@ -8,58 +8,17 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.axes import Axes
 from copy import deepcopy
 
-from shamfi.shapelet_coords import twoD_Gaussian
+from shamfi.shapelet_coords import twoD_Gaussian, ShapeletCoords
 from shamfi import shapelets
+from shamfi.read_FITS_image import FITSInformation
 
-
-
-# from scipy.special import factorial,eval_hermite
-# from astropy.io import fits
-
-#
-# from numpy import abs as np_abs
-# from astropy.wcs import WCS
-# from sys import exit
-# import scipy.optimize as opt
-#
-# from scipy.signal import fftconvolve
-# import os
-# from astropy.modeling.models import Gaussian2D
-# from progressbar import progressbar
-# from subprocess import check_output
-# import pkg_resources
-# from shamfi.git_helper import get_gitdict, write_git_header
-#
 ##Convert degress to radians
 D2R = pi/180.
 ##Convert radians to degrees
 R2D = 180./pi
-#
-# ##Max x value of stored basis functions
-# xmax = 250
-# ##Number of samples in stored basis functions
-# n_x = 20001
-# ##More basis function values
-# x_cent = int(floor(n_x / 2))
-# xrange = linspace(-xmax,xmax,n_x)
-# xres = xrange[1] - xrange[0]
-#
-# ##convert between FWHM and std dev for the gaussian function
-# factor = 2. * sqrt(2.*log(2.))
-#
-# ##converts between FWHM and std dev for the RTS
-# rts_factor = sqrt(pi**2 / (2.*log(2.)))
-#
-# ##Use package manager to get hold of the basis functions
-# basis_path = pkg_resources.resource_filename("shamfi", "image_shapelet_basis.npz")
-#
-# ##Load the basis functions
-# image_shapelet_basis = load(basis_path)
-# basis_matrix = image_shapelet_basis['basis_matrix']
-# gauss_array = image_shapelet_basis['gauss_array']
 
 
-
+#
 def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
     """
     Adds a colourbar (colorbar, fine) in a nice way to a subplot
@@ -68,7 +27,7 @@ def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
     ----------
     fig : matplotlib.pyplot.figure instance
         The figure that the plot lives on
-    ax : figure.add_subplot instance
+    ax : matplotlib.pyplot.figure.add_subplot instance
         The axis to append a colorbar to
     im : ax.imshow output
         The output of imshow to base the colourbar on
@@ -91,7 +50,16 @@ def add_colourbar(fig=None,ax=None,im=None,label=False,top=False):
         cbar.set_label(label)
 
 def plot_grid_search(shapelet_fitter,save_tag):
-    '''Plot a matrix of residuals found when fitting for b1,b2'''
+    """
+    Plot a matrix of the image based residuals as a function of b1, b2
+
+    Parameters
+    ----------
+    shapelet_fitter : shamfi.shapelets.FitShapelets instance
+        The :class:`FitShapelets` used to run the shapelet fitting
+    save_tag : string
+        A tag to add into the file name to save the plot to
+    """
     fig = plt.figure(figsize=(6,6))
     ax = fig.add_subplot(1,1,1)
     im = ax.imshow(shapelet_fitter.residuals_array)
@@ -117,8 +85,16 @@ def plot_grid_search(shapelet_fitter,save_tag):
 
 
 def plot_gaussian_fit(shpcoord,save_tag):
-    '''Plot a contour of an intial gaussian fit over an image, using the results
-    of a ShapeletCoords Class'''
+    """Plot a contour of an intial gaussian fit over an image, using the results
+    of a :class:`ShapeletCoords`
+
+    Parameters
+    ----------
+    shpcoord : shamfi.shapelet_coords.ShapeletCoords instance
+        The :class:`FitShapelets` used to run the shapelet fitting
+    save_tag : string
+        A tag to add into the file name to save the plot to
+    """
     mask = twoD_Gaussian((shpcoord.ra_mesh, shpcoord.dec_mesh), *shpcoord.popt)
     mask.shape = shpcoord.ra_mesh.shape
 
@@ -133,6 +109,25 @@ def plot_gaussian_fit(shpcoord,save_tag):
     fig.savefig('pa_fit_%s.png' %save_tag ,bbox_inches='tight')
 
 def do_subplot(fig,ax,data,label,vmin,vmax):
+    """
+    Plots a 2D numpy array (data) with a colorbar. Optionally can set vlim and
+    vmin to control the colour scale
+
+    Parameters
+    ----------
+    fig : matplotlib.pyplot.figure instance
+        The figure that the plot lives on
+    ax : matplotlib.pyplot.figure.add_subplot instance
+        The axis to plot on
+    data : 2D numpy array
+        The data to plot
+    label : string
+        The title for the subplot
+    vmin : float
+        Optional - lower value for the colour scale, passed to imshow
+    vmax : float
+        Optional - upper value for the colour scale, passed to imshow
+    """
     if vmin:
         ax.imshow(data,origin='lower',vmin=vmin,vmax=vmax)
     else:
@@ -141,9 +136,24 @@ def do_subplot(fig,ax,data,label,vmin,vmax):
     ax.set_title(label)
 
 def make_masked_image(flat_data,shapelet_fitter):
-    '''Create a 2D array for plotting purposes, where all the pixels that were
+    """
+    Create a 2D array for plotting purposes, where all the pixels that were
     originally masked in the fit are set to NaN so they don't show during
-    imshow'''
+    imshow
+
+    Parameters
+    ----------
+    flat_data : array
+        numpy array of data to mask
+    shapelet_fitter : shamfi.shapelets.FitShapelets instance
+        The :class:`FitShapelets` used to run the shapelet fitting
+    Returns
+    -------
+    masked_data: 2D array
+        A 2D array in the original shape of the image to be fitted, with the
+        cuts that were applied during fitted set to NaNs for plotting
+
+    """
     ##Array of just nans of the correct dimension
     masked_data = ones(shapelet_fitter.fits_data.data.shape)*nan
 
@@ -162,6 +172,25 @@ def make_masked_image(flat_data,shapelet_fitter):
     return masked_data
 
 def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
+    """
+    Take a :class:FitShapelets class that has been run, and plot the results.
+    Plots the data with top left, fit top right, and residuals bottom left.
+    Optionally, plot an edge padded version of the final fit bottom right - useful
+    to check that unconstrained areas outside of the fitting region haven't ended up
+    with crazy modelled flux.
+
+    Parameters
+    ----------
+    shapelet_fitter : shamfi.shapelets.FitShapelets instance
+        The :class:`FitShapelets` used to run the shapelet fitting
+    save_tag : string
+        A tag to add into the file name to save the plot to
+    plot_edge_pad : bool
+        If True, plot a version of the model using edge padded coords, to check
+        for run away modelling outside the fitting area
+
+    """
+
     fig = plt.figure(figsize=(10,8))
 
     ##If plotting edge pad, need an extra axis
@@ -174,11 +203,7 @@ def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
         ax1 = fig.add_subplot(221)
         ax2 = fig.add_subplot(222)
         ax3 = fig.add_subplot(223)
-    #
-    # if args.plot_lims:
-    #     vmin,vmax = map(float,args.plot_lims.split(','))
-    #
-    # else:
+
     vmin,vmax = False, False
 
     masked_data = make_masked_image(shapelet_fitter.data_to_fit, shapelet_fitter)
@@ -192,28 +217,34 @@ def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
 
         print('Generating model for edge padded image')
 
-        if shapelet_fitter.fits_data.edge_pad:
-            b1 = shapelet_fitter.best_b1
-            b2 = shapelet_fitter.best_b2
-            n1s = shapelet_fitter.fit_n1s
-            n2s = shapelet_fitter.fit_n2s
-            nmax = shapelet_fitter.nmax
-            convolve_kern = shapelet_fitter.convolve_kern
-            shape = shapelet_fitter.fits_data.data.shape
+        ## Gather fitting results
+        b1 = shapelet_fitter.best_b1
+        b2 = shapelet_fitter.best_b2
+        n1s = shapelet_fitter.fit_n1s
+        n2s = shapelet_fitter.fit_n2s
+        nmax = shapelet_fitter.nmax
+        convolve_kern = shapelet_fitter.convolve_kern
+        b1_max = max(shapelet_fitter.b1_grid)
+        b2_max = max(shapelet_fitter.b2_grid)
 
-            xrot,yrot = shapelet_fitter.shpcoord.radec2xy(b1, b2, crop=False)
+        ##Edge pad by one fifth the total width
+        edge_pad = int(shapelet_fitter.fits_data.data.shape[0] / 5)
 
-            _, _, A_shape_basis_edge = shapelets.gen_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,
-                                                          nmax=nmax,b1=b1,b2=b2,
-                                                          convolve_kern=convolve_kern,shape=shape)
-        # else:
-        #     edge_pad = int(fit_data.shape[0] / 5)
-        #     data,flat_data,ras,decs,convert2pixel,ra_reso,dec_reso,freq,len1,len2,wcs,dims,rest_bmaj,rest_bmin,rest_pa = get_fits_info(args.fits_file,edge_pad=edge_pad,freq=args.freq)
-        #     ra_ind,dec_ind,ra_mesh,dec_mesh,ra_range,dec_range = find_image_centre_celestial(ras=ras,decs=decs,flat_data=flat_data,pixel_inds_to_use=pixel_inds_to_use,data=data)
-        #     ra_cent, dec_cent, ras, decs = set_central_pixel_to_zero(popt,ras,decs,ra_range,dec_range,args,edge_pad,dims,wcs)
-        #
-        #     xrot,yrot = radec2xy(ras,decs,pa,b1,b2)
+        ##Set up a new edge padded coord system
+        new_fits_data = FITSInformation(shapelet_fitter.fits_data.fitsfile)
+        new_fits_data.get_radec_edgepad(edge_pad=edge_pad)
+        shpcoord_pad = ShapeletCoords(new_fits_data)
+        shpcoord_pad.find_good_pixels()
+        shpcoord_pad.fit_gauss_and_centre_coords(b1_max=False,b2_max=False)
+        xrot,yrot = shpcoord_pad.radec2xy(b1, b2, crop=False)
 
+        ##Generate a new A matrix with the edge padded coords
+        shape = new_fits_data.data.shape
+        _, _, A_shape_basis_edge = shapelets.gen_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,
+                                                      nmax=nmax,b1=b1,b2=b2,
+                                                      convolve_kern=convolve_kern,shape=shape)
+
+        ##Generate an image and plot
         fitted_coeffs = deepcopy(shapelet_fitter.fitted_coeffs)
         fitted_coeffs.shape = (len(fitted_coeffs),1)
         fit_data_edge = matmul(A_shape_basis_edge,fitted_coeffs)
@@ -225,35 +256,3 @@ def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
     fig.tight_layout()
     fig.savefig('shamfi_%s_nmax%03d_p%03d.png' %(save_tag,shapelet_fitter.nmax,shapelet_fitter.model_percentage), bbox_inches='tight')
     plt.close()
-
-def plot_compressed_fits(args, compressed_images, flat_data, data_shape, pixel_inds_to_use,
-                  save_tag, compress_values, nmax):
-    '''Takes a list of compressed_images containg 2D arrays, and plots the
-    compression results after a SHAMFI fit'''
-
-    fig = plt.figure(figsize=(6,2*len(compressed_images)))
-    if args.plot_lims:
-        vmin,vmax = map(float,args.plot_lims.split(','))
-    else:
-        vmin,vmax = False, False
-
-    bad_inds = setdiff1d(arange(len(flat_data)),pixel_inds_to_use)
-    flat_data[bad_inds] = nan
-    flat_data.shape = data_shape
-
-    for plot_ind in arange(len(compressed_images)):
-
-        compressed_image = compressed_images[plot_ind]
-        compressed_image.shape = data_shape
-
-        ax_img = fig.add_subplot(len(compressed_images),2,plot_ind*2+1)
-        ax_diff = fig.add_subplot(len(compressed_images),2,plot_ind*2+2)
-
-        do_subplot(fig,ax_img,compressed_image,'Fit %03.1f%%' %(compress_values[plot_ind]),vmin,vmax)
-        do_subplot(fig,ax_diff,flat_data - compressed_image,'Fit %03.1f%%' %(compress_values[plot_ind]),vmin,vmax)
-
-    fig.tight_layout()
-    fig.savefig('shamfi_%s_nmax%d_compressed_fits.png' %(save_tag,nmax), bbox_inches='tight')
-    plt.close()
-
-    return flat_data
