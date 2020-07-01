@@ -4,7 +4,7 @@ Tutorial
 
 We will use fitting Fornax A (as detailed in Line et al. 2020) as an example. First of all, we need a FITS file. Most FITS files should work, but SHAMFI has been tested against FITS files out of WSClean. Fornax A is a complicated source and so requires some manipulation before fitting; if you are fitting something with less structure, you can probably skip the first two steps.
 
-Our FITS file is called ``cropped_FornaxA_real_phase1+2.fits``, was made by multi-scale CLEANing MWA data, and looks like this:
+Our FITS file is called ``cropped_FornaxA_real_phase1+2.fits`` (which you can find in the ``docs`` directory of the SHAMFI repo), was made by multi-scale CLEANing MWA data, and looks like this:
 
 .. image:: just_FornaxA.png
    :width: 400pt
