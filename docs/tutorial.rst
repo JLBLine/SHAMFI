@@ -4,7 +4,7 @@ Tutorial
 
 We will use fitting Fornax A (as detailed in Line et al. 2020) as an example. First of all, we need a FITS file. Most FITS files should work, but SHAMFI has been tested against FITS files out of WSClean. Fornax A is a complicated source and so requires some manipulation before fitting; if you are fitting something with less structure, you can probably skip the first two steps.
 
-Our FITS file is called ``cropped_FornaxA_real_phase1+2.fits`` (which you can find in the ``docs`` directory of the SHAMFI repo), was made by multi-scale CLEANing MWA data, and looks like this:
+Our FITS file is called ``cropped_FornaxA_real_phase1+2.fits`` (which you can find in the ``tutorial_files`` directory of the SHAMFI repo), was made by multi-scale CLEANing MWA data, and looks like this:
 
 .. image:: just_FornaxA.png
    :width: 400pt
@@ -20,7 +20,7 @@ The more compact emission in a source, the more high-order basis functions are r
       --gauss_table=gaussians_to_subtract.txt \
       --outname=gauss-subtracted_phase1+2_real_data.fits
 
-Unfortunately we have to manually create ``gaussians_to_subtract.txt``, which requires the following columns: ``x_cent(pixels) y_cent(pixels) major(FWHM, arcmins) minor(FWHM, arcmins) pa(deg) int_flux(Jy)``. In the command above, ``gaussians_to_subtract.txt`` looks like:
+Unfortunately we have to manually create ``gaussians_to_subtract.txt``, which requires the following columns: ``x_cent(pixels) y_cent(pixels) major(FWHM, arcmins) minor(FWHM, arcmins) pa(deg) int_flux(Jy)``. I have placed a copy in the ``tutorial_files`` directory, where ``gaussians_to_subtract.txt`` looks like:
 
 .. code-block::
 
@@ -31,7 +31,7 @@ Unfortunately we have to manually create ``gaussians_to_subtract.txt``, which re
    232 193 0.2 0.2 0.0 0.55
    233 192.5 0.8 0.2 -20.0 0.2
 
-Running this command will produce:
+Running the ``subtract_gauss_from_image_shamfi.py`` command above will produce:
 
 - ``gauss-subtracted_phase1+2_real_data.png``
 - ``gauss-subtracted_phase1+2_real_data.fits``
