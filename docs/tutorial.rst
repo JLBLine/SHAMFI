@@ -22,7 +22,7 @@ The more compact emission in a source, the more high-order basis functions are r
 
 Unfortunately we have to manually create ``gaussians_to_subtract.txt``, which requires the following columns: ``x_cent(pixels) y_cent(pixels) major(FWHM, arcmins) minor(FWHM, arcmins) pa(deg) int_flux(Jy)``. I have placed a copy in the ``tutorial_files`` directory, where ``gaussians_to_subtract.txt`` looks like:
 
-.. code-block::
+.. code-block:: bash
 
    ## x_cent(pixels) y_cent(pixels) major(FWHM, arcmins) minor(FWHM, arcmins) pa(deg) int_flux(Jy)
    126 130.8 0.6 0.4 -30.0 1.3
