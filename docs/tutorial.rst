@@ -81,20 +81,22 @@ First up, let's look at the commands, and then I'll break them down.
    fit_shamfi.py \
        --save_tag=real_ForA_phase1+2_lobe1 \
        --fits_file=real_ForA_phase1+2_split01.fits \
-       --b1s=3.5,4.5 --b2s=3.0,4.0 --nmax=86 \
+       --b1s=3.0,4.0 --b2s=3.0,4.0 --nmax=86 \
        --num_beta_values=5 \
        --edge_pad=25 \
-       --fit_box=0,180,50,225 \
-       --woden_srclist --plot_resid_grid --plot_edge_pad
+       --fit_box=0,200,50,240 \
+       --woden_srclist --plot_resid_grid --plot_edge_pad \
+       --compress=90.0,80.0,70.0
 
    fit_shamfi.py \
        --save_tag=real_ForA_phase1+2_lobe2 \
        --fits_file=real_ForA_phase1+2_split02.fits \
-       --b1s=3.5,4.5 --b2s=3.0,4.0 --nmax=86 \
+       --b1s=3.0,4.0 --b2s=3.0,4.0 --nmax=86 \
        --num_beta_values=5 \
-       --fit_box=100,290,85,260 \
+       --fit_box=100,300,80,270 \
        --edge_pad=25 \
-       --woden_srclist --plot_resid_grid --plot_edge_pad
+       --woden_srclist --plot_resid_grid --plot_edge_pad \
+       --compress=90.0,80.0,70.0
 
 Running the first command will produce:
 

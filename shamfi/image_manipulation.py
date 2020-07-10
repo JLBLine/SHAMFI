@@ -76,8 +76,8 @@ def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data):
 
     gauss_func = Gaussian2D(amplitude=1.0, x_mean=x, y_mean=y, x_stddev=x_stddev, y_stddev=y_stddev,theta=pi/2.0 + pa)
 
-    xrange = arange(header['NAXIS1'])
-    yrange = arange(header['NAXIS2'])
+    xrange = arange(fits_data.header['NAXIS1'])
+    yrange = arange(fits_data.header['NAXIS2'])
 
     x_mesh, y_mesh = meshgrid(xrange,yrange)
     gauss_subtrac = gauss_func(x_mesh,y_mesh)

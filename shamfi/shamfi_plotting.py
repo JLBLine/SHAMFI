@@ -9,7 +9,7 @@ from matplotlib.axes import Axes
 from copy import deepcopy
 
 from shamfi.shapelet_coords import twoD_Gaussian, ShapeletCoords
-from shamfi import shapelets
+from shamfi.shapelets import gen_A_shape_matrix
 from shamfi.read_FITS_image import FITSInformation
 
 ##Convert degress to radians
@@ -240,7 +240,7 @@ def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
 
         ##Generate a new A matrix with the edge padded coords
         shape = new_fits_data.data.shape
-        _, _, A_shape_basis_edge = shapelets.gen_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,
+        _, _, A_shape_basis_edge = gen_A_shape_matrix(n1s=n1s,n2s=n2s,xrot=xrot,yrot=yrot,
                                                       nmax=nmax,b1=b1,b2=b2,
                                                       convolve_kern=convolve_kern,shape=shape)
 

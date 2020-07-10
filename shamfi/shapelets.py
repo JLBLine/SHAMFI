@@ -8,7 +8,7 @@ from astropy.io import fits
 import warnings
 from astropy.utils.exceptions import AstropyWarning
 from shamfi.git_helper import get_gitdict, write_git_header
-from shamfi import shamfi_plotting
+# from shamfi import shamfi_plotting
 from scipy.signal import fftconvolve
 
 try:
@@ -714,7 +714,7 @@ class FitShapelets():
 
         if woden_srclist:
             with open('srclist-woden_%s_nmax%03d_p%03d.txt' %(save_tag,self.nmax,int(self.model_percentage)),'w+') as outfile:
-
+                write_git_header(outfile)
                 outfile.write('SOURCE %s P 0 G 0 S 1 %d\n' %(save_tag,len(self.fitted_coeffs)))
                 outfile.write('COMPONENT SHAPELET %.6f %.6f\n' %(self.shpcoord.ra_cent/15.0,self.shpcoord.dec_cent))
                 outfile.write("FREQ %.5e %.5f 0 0 0\n" %(self.fits_data.freq,all_flux))
