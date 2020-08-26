@@ -206,8 +206,9 @@ def plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=False):
 
     vmin,vmax = False, False
 
-    masked_data = make_masked_image(shapelet_fitter.data_to_fit, shapelet_fitter)
     masked_fit = make_masked_image(shapelet_fitter.fit_data, shapelet_fitter)
+    masked_data = make_masked_image(shapelet_fitter.data_to_fit, shapelet_fitter)
+
 
     do_subplot(fig,ax1,masked_data,'Data',vmin,vmax)
     do_subplot(fig,ax2,masked_fit,'Fit (convolved with\nrestoring beam)',vmin,vmax)

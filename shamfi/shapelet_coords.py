@@ -84,6 +84,24 @@ class ShapeletCoords():
         if fit_box:
             pixel_inds_to_use = []
             low_x,high_x,low_y,high_y = array(fit_box.split(','),dtype=int)
+
+
+
+            ##If edge padding is greater than zero, but the user wants to use
+            ##only a certain box, we need to move the zero padding to surrond
+            ##that patch of the image, so set the appropriate parts of the
+            ##image to zero here
+            if self.edge_pad > 0:
+                high_x += self.edge_pad*2
+                high_y += self.edge_pad*2
+
+                self.fits_data.data[low_y:low_y+self.edge_pad,:] = 0.0
+                self.fits_data.data[high_y-self.edge_pad:high_y,:] = 0.0
+                self.fits_data.data[:,low_x:low_x+self.edge_pad] = 0.0
+                self.fits_data.data[:,high_x-self.edge_pad:high_x] = 0.0
+
+                self.fits_data.flat_data = self.fits_data.data.flatten()
+
             for y in range(low_y,high_y+1):
                 for x in range(low_x,high_x+1):
                     pixel_inds_to_use.append(y*self.fits_data.len1 + x)
