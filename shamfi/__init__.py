@@ -15,8 +15,7 @@ __date__ = '2020-05-19'
 __cite__ = """
 % If you use SHAMFI in your work, please cite the following paper:
 
-{
-JL: Will insert paper once it's published!
-}
+https://doi.org/10.1017/pasa.2020.18
+
 
 """
