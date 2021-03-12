@@ -23,7 +23,7 @@ def get_parser():
         help='Name for gaussian subtracted output FITS file. Defaults to using the input FITS name')
     parser.add_argument('--freq', default='from_FITS',
         help='Frequency (Hz) of the image - defaults to looking for keyword FREQ and associated value')
-    parser.add_argument('--no_restore_beam', action='store_true', default=False,
+    parser.add_argument('--no_restore_beam', action='store_false', default=True,
         help='Do not convolve gaussians with restoring beam of CLEANed image')
 
     return parser
