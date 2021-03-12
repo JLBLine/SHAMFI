@@ -23,6 +23,8 @@ def get_parser():
         help='Name for gaussian subtracted output FITS file. Defaults to using the input FITS name')
     parser.add_argument('--freq', default='from_FITS',
         help='Frequency (Hz) of the image - defaults to looking for keyword FREQ and associated value')
+    parser.add_argument('--no_restore_beam', action='store_true', default=False,
+        help='Do not convolve gaussians with restoring beam of CLEANed image')
 
     return parser
 
@@ -121,7 +123,8 @@ if __name__ == '__main__':
 
         data,ra,dec = subtract_gauss(ind=ind,x=xs[ind],y=ys[ind],major=majors[ind],
                           minor=minors[ind],pa=pas[ind],flux=int_fluxs[ind],
-                          ax1=ax1,ax2=ax2,ax3=ax3,fig=fig,fits_data=fits_data)
+                          ax1=ax1,ax2=ax2,ax3=ax3,fig=fig,fits_data=fits_data,
+                          convolve=args.no_restore_beam)
 
         ##Get the info into the source
         comp = Component_Info()

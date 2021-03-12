@@ -1,13 +1,11 @@
 from __future__ import print_function,division
 from numpy import *
 from shamfi.shamfi_plotting import add_colourbar
-
 from copy import deepcopy
 import os
 from astropy.modeling.models import Gaussian2D
 from scipy.signal import fftconvolve
 from shamfi.git_helper import get_gitdict, write_git_header
-
 
 ##convert between FWHM and std dev for the gaussian function
 FWHM_factor = 2. * sqrt(2.*log(2.))
@@ -15,9 +13,8 @@ FWHM_factor = 2. * sqrt(2.*log(2.))
 ##converts between FWHM and std dev for the RTS
 rts_factor = sqrt(pi**2 / (2.*log(2.)))
 
-
-
-def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data):
+def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data,
+                   convolve=True):
     """
     Takes a 2D CLEAN restored image array (data) and subtracts a Gaussian
     using the specified parameters. The subtracted Gaussian is convolved with
@@ -50,6 +47,11 @@ def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data):
         The figure to plot on
     fits_data : shamfi.read_FITS_image.FITSInformation instance
         A :class:`FITSInformation` class containing the image data
+    convolve : boolean
+        By default, gaussians to subtract are convolved by the restoring beam
+        to account correctly for resolution effects. Set this to False if you
+        know you gaussian parameters work with the current image.
+        Default convolve=True.
 
     Return
     ------
@@ -89,8 +91,11 @@ def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data):
     # rest_gauss_kern = create_restoring_kernel(rest_bmaj,rest_bmin,rest_pa,ra_reso,dec_reso)
     rest_gauss_kern = fits_data.create_restoring_kernel()
 
-    ##Convolve with restoring beam
-    gauss_subtrac = fftconvolve(gauss_subtrac, rest_gauss_kern, 'same')
+    ##Convolve with restoring beam if necessary
+    if convolve:
+        gauss_subtrac = fftconvolve(gauss_subtrac, rest_gauss_kern, 'same')
+    else:
+        pass
 
     ##Get the convertsion from Jy/beam to Jy/pixel
     convert2pixel = fits_data.convert2pixel
