@@ -1,0 +1,15 @@
+name: Write commit hash and branch to text file
+
+# **What it does**: This checks for any broken docs.github.com links in github/github
+# **Why we have it**: Make sure all docs in github/github are up to date
+# **Who does it impact**: Docs engineering, people on GitHub
+
+on: [push]
+
+jobs:
+  get_git_info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Use bash to echo environment variables
+        run: echo ${{ github.head_ref }} > gitinfo.txt && echo ${{ github.sha }} >> gitinfo.txt
+        shell: bash
