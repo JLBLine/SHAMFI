@@ -116,12 +116,15 @@ def subtract_gauss(ind,x,y,major,minor,pa,flux,ax1,ax2,ax3,fig,fits_data,
 
     ##Plot the data and the gaussian
     im1 = ax1.imshow(data_plot,origin='lower',vmin=vmin,vmax=vmax)
+    ax1.contour(gauss_subtrac[low_y:high_y,low_x:high_x],colors='r',alpha=0.5)
     im2 = ax2.imshow(gauss_subtrac[low_y:high_y,low_x:high_x],origin='lower',vmin=vmin,vmax=vmax)
 
     ##subtract the gaussian
     data -= gauss_subtrac
     ##Plot the data after subtraction
     im3 = ax3.imshow(data[low_y:high_y,low_x:high_x],origin='lower')
+
+    ax3.contour(gauss_subtrac[low_y:high_y,low_x:high_x],colors='r',alpha=0.5)
 
     ##Set some colourbars and get rid of tick labels
     for ax,im in zip([ax1,ax2,ax3],[im1,im2,im3]):

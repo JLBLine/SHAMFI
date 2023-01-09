@@ -49,21 +49,21 @@ class FITSInformation():
 
     """
     def __init__(self,fitsfile):
-        try:
-            with fits.open(fitsfile) as hdu:
-                self.header = hdu[0].header
-                self.data = hdu[0].data
-                self.read_data = True
+        # try:
+        with fits.open(fitsfile) as hdu:
+            self.header = hdu[0].header
+            self.data = hdu[0].data
+            self.read_data = True
 
-                self._get_basic_info()
-                self._get_convert2pixel()
-                self._get_frequency()
+            self._get_basic_info()
+            self._get_convert2pixel()
+            self._get_frequency()
 
-                self.fitsfile = fitsfile
+            self.fitsfile = fitsfile
 
-        except:
-            print('Failed to open and read this FITS file: %s' %fitsfile)
-            self.read_data = False
+        # except:
+        #     print('Failed to open and read this FITS file: %s' %fitsfile)
+        #     self.read_data = False
 
     def _get_basic_info(self):
         '''Use the FITS header and data to find some key information'''
@@ -92,7 +92,11 @@ class FITSInformation():
         self.naxis1 = int(self.header['NAXIS1'])
         self.naxis2 = int(self.header['NAXIS2'])
 
-        self.wcs = WCS(self.header)
+        ##python is zero indexed, FITS are 1 indexed, so take one off
+        self.x_cent_pix = self.header['CRPIX1'] - 1
+        self.y_cent_pix = self.header['CRPIX2'] - 1
+
+        self.wcs = WCS(self.header).celestial
         self.flat_data = self.data.flatten()
 
 
@@ -102,18 +106,20 @@ class FITSInformation():
 
         try:
             # TODO Currently this will only work if BMAJ,BMIN,ra_reso,dec_reso are
-            #all in the same units
+            # all in the same units
             self.bmaj = float(self.header['BMAJ'])
             self.bmin = float(self.header['BMIN'])
 
-            self.solid_beam = (pi*self.bmaj*self.bmin) / (4*log(2))
+            self.solid_beam = (pi*self.bmaj*self.bmin*D2R**2) / (4*log(2))
 
-            self.solid_pixel = abs(self.ra_reso*self.dec_reso)
+            self.solid_pixel = abs(self.ra_reso*self.dec_reso*D2R**2)
             self.convert2pixel = self.solid_pixel/self.solid_beam
 
             self.got_convert2pixel = True
 
-        except:
+        except KeyError:
+            print("Warning - could not read BMAJ or BMIN from FITS header."
+                  " Cannot create restoring kernel")
             self.bmaj = None
             self.bmin = None
             self.solid_beam = None
@@ -150,6 +156,8 @@ class FITSInformation():
         ##TODO - this is fine for small images, but for large images projection
         ## I think we should do this using WCS
 
+        ##If edge padding, need to make a new astropy header with updated
+        ##dimensions so the WCS works
         if edge_pad:
 
             self.len1 += edge_pad*2
@@ -157,20 +165,51 @@ class FITSInformation():
 
             ras = (arange(self.len1) - (int(self.header['CRPIX1'])+edge_pad))*self.ra_reso
             decs = (arange(self.len2) - (int(self.header['CRPIX2'])+edge_pad))*self.dec_reso
+
+
+            new_hdu = fits.PrimaryHDU()
+
+            new_hdu.header['NAXIS'] = 2
+
+            new_hdu.header['NAXIS1'] = self.header['NAXIS1'] + edge_pad*2
+            new_hdu.header['NAXIS2'] = self.header['NAXIS2'] + edge_pad*2
+
+            new_hdu.header['CDELT1'] = -abs(self.ra_reso)
+            new_hdu.header['CRPIX1'] = self.header['CRPIX1'] + edge_pad
+            new_hdu.header['CRVAL1'] = self.header['CRVAL1']
+            new_hdu.header['CTYPE1'] = 'RA---SIN'
+            new_hdu.header['CUNIT1']  = 'deg'
+
+            new_hdu.header['CDELT2'] = self.dec_reso
+            new_hdu.header['CRPIX2'] = self.header['CRPIX2'] + edge_pad
+            new_hdu.header['CRVAL2'] = self.header['CRVAL2']
+            new_hdu.header['CTYPE2'] = 'DEC--SIN'
+            new_hdu.header['CUNIT2']  = 'deg'
+
+            self.wcs = WCS(new_hdu.header)
+
             pad_image = zeros((self.len1,self.len2))
             pad_image[edge_pad:self.data.shape[0]+edge_pad,edge_pad:self.data.shape[1]+edge_pad] = self.data
             self.data = pad_image
 
-        else:
-            ras = (arange(self.len1) - int(self.header['CRPIX1']))*self.ra_reso
-            decs = (arange(self.len2) - int(self.header['CRPIX2']))*self.dec_reso
+            self.x_cent_pix += edge_pad
+            self.y_cent_pix += edge_pad
+
+        # else:
+        #     ras = (arange(self.len1) - int(self.header['CRPIX1']))*self.ra_reso
+        #     decs = (arange(self.len2) - int(self.header['CRPIX2']))*self.dec_reso
 
         ##Get the ra,dec range for all pixels
-        ras_mesh,decs_mesh = meshgrid(ras,decs)
-        ras,decs = ras_mesh.flatten(),decs_mesh.flatten()
+        # ras_mesh,decs_mesh = meshgrid(ras,decs)
+        # ras,decs = ras_mesh.flatten(),decs_mesh.flatten()
 
-        self.ras = ras * D2R
-        self.decs = decs * D2R
+        x_pixel_mesh, y_pixel_mesh = meshgrid(arange(self.len1), arange(self.len2))
+
+        ras_mesh, decs_mesh = self.wcs.all_pix2world(x_pixel_mesh, y_pixel_mesh, 0)
+
+
+        self.ras = ras_mesh.flatten() * D2R
+        self.decs = decs_mesh.flatten() * D2R
         self.edge_pad = edge_pad
         self.flat_data = self.data.flatten()
 
@@ -199,10 +238,13 @@ class FITSInformation():
             print('Could not find beam PA from FITS file. Setting to zero for the restoring kernel')
             bpa = 0.0
 
-        rest_gauss_func = Gaussian2D(amplitude=1, x_mean=0, y_mean=0, x_stddev=x_stddev, y_stddev=y_stddev,theta=pi/2 + bpa)
+        print(f"PA is {bpa:.6f}")
+
+        rest_gauss_func = Gaussian2D(amplitude=1, x_mean=0, y_mean=0, x_stddev=x_stddev, y_stddev=y_stddev, theta=pi/2 + bpa)
+#        rest_gauss_func = Gaussian2D(amplitude=1, x_mean=0, y_mean=0, x_stddev=y_stddev, y_stddev=x_stddev, theta=bpa)
 
         ##Sample restore beam to 8 times larger than bmaj in pixels
-        rest_samp_max = int(ceil(self.bmaj / abs(self.ra_reso)))
+        rest_samp_max = 2*int(ceil(self.bmaj / abs(self.ra_reso)))
 
         xrange = arange(-rest_samp_max,rest_samp_max + 1)
         yrange = arange(-rest_samp_max,rest_samp_max + 1)

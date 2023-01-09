@@ -78,6 +78,25 @@ def get_parser():
         help='If no restoring beam information available, use this maximum baseline length in \
               conjunction with the frequency to calculate a resolution to set BMAJ and BMIN')
 
+    parser.add_argument('--force_fit_centre', default=False, action='store_true',
+        help='Forces the shapelet basis functions to have the coord centre locked'
+             ' to the centre of the fitting area. Usually the centre of the flux'
+             'is used. This is useful for fitting things like diffuse emission')
+
+    parser.add_argument('--force_pa', default=0.0,
+        help='When using --force_fit_centre, use this to force a position angle'
+             '(degrees). Defaults to 0.0')
+
+    parser.add_argument('--no_full_output_FITS', default=False, action='store_true',
+        help='By default, SHAMFI outputs a FITS file that matches the original'
+             'image being fitted. If this is image is large, generating the'
+             'output model might be very slow. Add this to switch that off')
+
+    parser.add_argument('--normalise_for_convolution', default=False, action='store_true',
+        help='If the intention is to fit this model for convolution (typically '
+             'to fit a beam model), apply the necessary extra normalisations to '
+             'ensure this model is normalised')
+
     ##TODO - make the script able to just plot a given shapelet model
     # parser.add_argument('--just_plot', default=False, action='store_true',
     #     help='Default behaviour is to fit a shapelet model to --fits_file. If just plotting pass this to switch off fitting')
@@ -97,37 +116,25 @@ def get_parser():
 
     return parser
 
-def apply_srclist_option(args,shapelet_fitter,save_tag):
+def apply_srclist_option(args, shapelet_fitter, save_tag):
     '''Uses the user supplied arguments to write out the correct number of
     srclists'''
     if args.no_srclist:
         pass
     else:
         if args.rts_srclist and args.woden_srclist:
-            shapelet_fitter.save_srclist(save_tag)
+            shapelet_fitter.save_srclist(save_tag, norm_convo=args.normalise_for_convolution)
         elif args.rts_srclist:
-            shapelet_fitter.save_srclist(save_tag,woden_srclist=False)
+            shapelet_fitter.save_srclist(save_tag, norm_convo=args.normalise_for_convolution,
+                                                                          woden_srclist=False)
         elif args.woden_srclist:
-            shapelet_fitter.save_srclist(save_tag,rts_srclist=False)
+            shapelet_fitter.save_srclist(save_tag, norm_convo=args.normalise_for_convolution,
+                                                                            rts_srclist=False)
         else:
-            shapelet_fitter.save_srclist(save_tag)
+            shapelet_fitter.save_srclist(save_tag, norm_convo=args.normalise_for_convolution)
 
 
-if __name__ == '__main__':
-    # from sys import path
-    # path.append('/home/jline/software/SHAMFI/')
-    from shamfi import read_FITS_image, shapelet_coords, shamfi_plotting, shapelets
-    from shamfi import __cite__
-    from numpy import *
-    from astropy.wcs import WCS
-    # import shamfi
-    # from shamfi.shamfi_lib import *
-    from shamfi.git_helper import print_version_info
-    from copy import deepcopy
-    from subprocess import check_output
-    import os
-    from sys import exit
-
+def main():
     ##Convert degress to radians
     D2R = pi/180.
     ##Convert radians to degrees
@@ -195,17 +202,17 @@ if __name__ == '__main__':
         pass
     else:
         VELC = 299792458.0
-        baseline = float(args.baseline)
+        baseline = float(args.max_baseline)
         reso = ((VELC/(fits_data.freq*1e+6))/baseline)*R2D
         fits_data.bmaj = reso*0.5
         fits_data.bmin = reso*0.5
         rest_pa = 0.0
-        print('Assuming BMAJ,BMIN = %.3f,%.3f' %(bmaj,bmin))
+        print('Assuming BMAJ,BMIN = %.3f,%.3f' %(fits_data.bmaj,fits_data.bmin))
 
-        fits_data.solid_beam = (pi*rest_bmaj*rest_bmin) / (4*log(2))
-        fits_data.solid_pixel = abs(ra_reso)*dec_reso
+        fits_data.solid_beam = (pi*fits_data.bmaj*fits_data.bmin*D2R**2) / (4*log(2))
+        fits_data.solid_pixel = abs(fits_data.ra_reso)*fits_data.dec_reso*D2R**2
 
-        fits_data.convert2pixel = solid_pixel/solid_beam
+        fits_data.convert2pixel = fits_data.solid_pixel/fits_data.solid_beam
     #
     # ##Unless specified, convert from Jy / beam to Jy / pixel
     if not args.already_jy_per_pixel:
@@ -220,13 +227,23 @@ if __name__ == '__main__':
     ##Find the indexes of pixels to be fitted, based on user supplied args
     ##This function will also find the flux-weighted centre of the image,
     ##based on the pixel cuts
-    shpcoord.find_good_pixels(fit_box=args.fit_box,exclude_box=args.exclude_box,ignore_negative=args.ignore_negative)
+    shpcoord.find_good_pixels(fit_box=args.fit_box,exclude_box=args.exclude_box,
+                              ignore_negative=args.ignore_negative)
     # pixel_inds_to_use = find_good_pixels(args,edge_pad,flat_data,len1+2*edge_pad,ignore_negative=args.ignore_negative)
     print('Sum of flux in data is %.2f Jy' %(sum(fits_data.flat_data[shpcoord.pixel_inds_to_use])))
 
-    ##Fit a gaussian around the central point, using the beta params as an
-    ##initial guess. Also centres the zeroes the coord system about the fits
-    shpcoord.fit_gauss_and_centre_coords(b1_max=b1_max,b2_max=b2_max)
+    ##Set the centre of the shapelet basis function coords
+    if args.force_fit_centre:
+        ##If user selected, force the centre of the basis functions to sit
+        ##in the middle of the fitting region
+        shpcoord.set_centre_coords_to_fitting_region_cent(float(args.force_pa)*D2R)
+    else:
+        ##Fit a gaussian around the central point, using the beta params as an
+        ##initial guess. Also centres the zeroes the coord system about the fits
+        shpcoord.fit_gauss_and_centre_coords(b1_max=b1_max, b2_max=b2_max)
+
+    ##Works out if basis functions extend beyond fitting region?
+    # shpcoord.radec2xy(b1_max, b2_max, crop=True)
 
     ##If requested, plot the initial gaussian fit
     if args.plot_initial_gaussian_fit: shamfi_plotting.plot_gaussian_fit(shpcoord,save_tag)
@@ -245,7 +262,8 @@ if __name__ == '__main__':
     shapelet_fitter = shapelets.FitShapelets(fits_data=fits_data,shpcoord=shpcoord)
 
     ##TODO make switching off the output FITS file a parser arguement
-    shapelet_fitter.do_grid_search_fit(b1_grid, b2_grid, nmax, save_tag=save_tag)
+    shapelet_fitter.do_grid_search_fit(b1_grid, b2_grid, nmax, save_tag=save_tag,
+                                       save_FITS=not args.no_full_output_FITS)
 
     ##TODO make switching this plotting off a parser arguement
     shamfi_plotting.plot_full_shamfi_fit(shapelet_fitter, save_tag, plot_edge_pad=args.plot_edge_pad)
@@ -256,7 +274,7 @@ if __name__ == '__main__':
         # savez_compressed('%s_grid.npz' %save_tag,matrix_plot=shapelet_fitter.residuals_array,
         #     b1_grid=shapelet_fitter.b1_grid,b2_grid=shapelet_fitter.b2_grid)
 
-    apply_srclist_option(args,shapelet_fitter,save_tag)
+    apply_srclist_option(args, shapelet_fitter, save_tag)
 
     ##Do some compression if you fancy it
     if args.compress:
@@ -277,4 +295,24 @@ if __name__ == '__main__':
                 # savez_compressed('%s_grid.npz' %save_tag,matrix_plot=shapelet_fitter.residuals_array,
                 #     b1_grid=shapelet_fitter.b1_grid,b2_grid=shapelet_fitter.b2_grid)
 
-            apply_srclist_option(args,shapelet_fitter,save_tag)
+            apply_srclist_option(args, shapelet_fitter, save_tag)
+
+
+
+if __name__ == '__main__':
+    # from sys import path
+    # path.append('/home/jline/software/SHAMFI/')
+
+    from shamfi import read_FITS_image, shapelet_coords, shamfi_plotting, shapelets
+    from shamfi import __cite__
+    from numpy import *
+    from astropy.wcs import WCS
+    # import shamfi
+    # from shamfi.shamfi_lib import *
+    from shamfi.git_helper import print_version_info
+    from copy import deepcopy
+    from subprocess import check_output
+    import os
+    from sys import exit
+
+    main()

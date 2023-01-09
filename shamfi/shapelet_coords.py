@@ -3,6 +3,9 @@ from numpy import *
 from numpy import abs as np_abs
 import scipy.optimize as opt
 from copy import deepcopy
+import matplotlib.pyplot as plt
+
+
 ##Convert degress to radians
 D2R = pi/180.
 ##Convert radians to degrees
@@ -108,6 +111,7 @@ class ShapeletCoords():
 
             self.pixel_inds_to_use = array(pixel_inds_to_use)
             print('Will fit box defined by low_x,high_x,low_y,high_y: ',low_x,high_x,low_y,high_y)
+            # print("JUST DONE CALC", len(pixel_inds_to_use))
 
         else:
             ##If nothing declared, just use all the pixels
@@ -151,40 +155,50 @@ class ShapeletCoords():
     def _find_image_centre_celestial(self):
         '''Find the flux-weighted central position of an image'''
         power = 4
-        ra_cent = sum(self.fits_data.flat_data[self.pixel_inds_to_use]**power*self.fits_data.ras[self.pixel_inds_to_use])
-        ra_cent /= sum(self.fits_data.flat_data[self.pixel_inds_to_use]**power)
 
-        dec_cent = sum(self.fits_data.flat_data[self.pixel_inds_to_use]**power*self.fits_data.decs[self.pixel_inds_to_use])
-        dec_cent /= sum(self.fits_data.flat_data[self.pixel_inds_to_use]**power)
+        ras_to_use = deepcopy(self.fits_data.ras[self.pixel_inds_to_use])
 
-        resolution = abs(self.fits_data.ras[1] - self.fits_data.ras[0])
-        ##Find the difference between the gridded ra coords and the desired ra_cent
-        ra_offs = np_abs(self.fits_data.ras - ra_cent)
-        ##Find out where in the gridded ra coords the current ra_cent lives;
-        ##This is a boolean array of length len(ra_offs)
-        ra_true = ra_offs < resolution/2.0
-        ##Find the index so we can access the correct entry in the container
-        ra_ind = where(ra_true == True)[0]
+        ##Make it wrap throught -180.0 to 180 if we go over the 0/360 wrap
 
-        ##Use the numpy abs because it's faster (np_abs)
-        dec_offs = np_abs(self.fits_data.decs - dec_cent)
-        dec_true = dec_offs < resolution/2
-        dec_ind = where(dec_true == True)[0]
+        if ras_to_use.min() < 1.0*D2R and ras_to_use.min() > 359.0*D2R:
+            ras_to_use[ras_to_use > pi] -= 2*pi
+            ras_to_use[ras_to_use < -pi] += 2*pi
 
-        ##If ra_ind,dec_ind coord sits directly between two grid points,
-        ##just choose the first one
-        if len(ra_ind) == 0:
-            ra_true = ra_offs <= resolution/2
-            ra_ind = where(ra_true == True)[0]
-        if len(dec_ind) == 0:
-            dec_true = dec_offs <= resolution/2
-            dec_ind = where(dec_true == True)[0]
-        ra_ind,dec_ind = ra_ind[0],dec_ind[0]
 
-        ##Central dec index has multiple rows as it is from flattended coords,
-        ##remove that here
-        dec_ind = floor(dec_ind / self.fits_data.len1)
-        print('Centre of flux pixel in image found as x,y',ra_ind,dec_ind)
+        ra_cent = sum(np_abs(self.fits_data.flat_data[self.pixel_inds_to_use])**power*ras_to_use)
+        ra_cent /= sum(np_abs(self.fits_data.flat_data[self.pixel_inds_to_use])**power)
+
+        dec_cent = sum(np_abs(self.fits_data.flat_data[self.pixel_inds_to_use])**power*self.fits_data.decs[self.pixel_inds_to_use])
+        dec_cent /= sum(np_abs(self.fits_data.flat_data[self.pixel_inds_to_use])**power)
+
+        # resolution = abs(self.fits_data.ras[1] - self.fits_data.ras[0])
+        # ##Find the difference between the gridded ra coords and the desired ra_cent
+        # ra_offs = np_abs(self.fits_data.ras - ra_cent)
+        # ##Find out where in the gridded ra coords the current ra_cent lives;
+        # ##This is a boolean array of length len(ra_offs)
+        # ra_true = ra_offs < resolution/2.0
+        # ##Find the index so we can access the correct entry in the container
+        # ra_ind = where(ra_true == True)[0]
+        #
+        # ##Use the numpy abs because it's faster (np_abs)
+        # dec_offs = np_abs(self.fits_data.decs - dec_cent)
+        # dec_true = dec_offs < resolution/2
+        # dec_ind = where(dec_true == True)[0]
+        #
+        # ##If ra_ind,dec_ind coord sits directly between two grid points,
+        # ##just choose the first one
+        # if len(ra_ind) == 0:
+        #     ra_true = ra_offs <= resolution/2
+        #     ra_ind = where(ra_true == True)[0]
+        # if len(dec_ind) == 0:
+        #     dec_true = dec_offs <= resolution/2
+        #     dec_ind = where(dec_true == True)[0]
+        # ra_ind,dec_ind = ra_ind[0],dec_ind[0]
+        #
+        # ##Central dec index has multiple rows as it is from flattended coords,
+        # ##remove that here
+        # dec_ind = floor(dec_ind / self.fits_data.len1)
+        # print('Centre of flux pixel in image found as x,y',ra_ind,dec_ind)
 
         ra_mesh = deepcopy(self.fits_data.ras)
         ra_mesh.shape = self.fits_data.data.shape
@@ -195,12 +209,11 @@ class ShapeletCoords():
         ra_range = ra_mesh[0,:]
         dec_range = dec_mesh[:,0]
 
-        self.ra_cent_ind = ra_ind
-        self.dec_cent_ind = dec_ind
+        self.ra_cent = ra_cent
+        self.dec_cent = dec_cent
+
         self.ra_mesh = ra_mesh
         self.dec_mesh = dec_mesh
-        self.ra_range = ra_range
-        self.dec_range = dec_range
 
     def fit_gauss_and_centre_coords(self,b1_max=False,b2_max=False):
         """
@@ -216,10 +229,13 @@ class ShapeletCoords():
         """
         ##Fit a gaussian to the data to find pa
         ##guess is: amp, xo, yo, sigma_x, sigma_y, pa
-        initial_guess = (self.fits_data.data.max(),self.ra_range[int(self.ra_cent_ind)],self.dec_range[int(self.dec_cent_ind)],
+        initial_guess = (self.fits_data.data.max(),self.ra_cent,self.dec_cent,
                         (b1_max / 60.0)*D2R,(b2_max / 60.0)*D2R,0)
 
         popt, pcov = opt.curve_fit(twoD_Gaussian, (self.ra_mesh, self.dec_mesh), self.fits_data.flat_data, p0=initial_guess)
+
+        # print(popt[5], popt[5] % (2*pi))
+
         #
         ##Check pa is between 0 <= pa < 2pi
         pa = popt[5]
@@ -236,35 +252,181 @@ class ShapeletCoords():
 
         x0 = popt[1]
         y0 = popt[2]
+
         #
         # ##Set central ra, dec pixel to zero in prep for scaling to x,y coords
-        self._set_central_pixel_to_zero(x0,y0)
+        self._set_central_pixel_to_zero(x0, y0)
 
-    def _set_central_pixel_to_zero(self,x0,y0):
+    def set_centre_coords_to_fitting_region_cent(self, pa=0.0):
         """
-        Using the central position found when fitting a gaussian (popt) takes
-        the ra,dec coord system and sets x0,y0=0,0
+        Run after self.find_good_pixels. This function just sets the centre
+        of the basis functions to sit at the centre of fitting region. Also
+        sets the pa = 0
+
         """
 
-        ra_offs = np_abs(self.ra_range - x0)
-        dec_offs = np_abs(self.dec_range - y0)
+        print(f"Setting pa to {pa/D2R} deg")
+        self.pa = pa
 
-        ra_ind = where(ra_offs < abs(self.ra_range[1] - self.ra_range[0])/2.0)[0][0]
-        dec_ind = where(dec_offs < abs(self.dec_range[1] - self.dec_range[0])/2.0)[0][0]
+        # fit_region_ras = deepcopy(self.fits_data.ras[self.pixel_inds_to_use])
+        # fit_region_decs = self.fits_data.decs[self.pixel_inds_to_use]
+        #
+        # ##If we cross the 360.0 / 0.0 RA deg boundary, set > 180.0 to negative
+        # if fit_region_ras.min() < 90.0*D2R and fit_region_ras.max() > 270.0*D2R:
+        #
+        #     fit_region_ras[fit_region_ras > pi] -= 2*pi
+        #
+        # ra_cent = sum(fit_region_ras) / len(fit_region_ras)
+        # dec_cent = sum(fit_region_decs) / len(fit_region_decs)
+        #
+        # if ra_cent < 0: ra_cent += 2*pi
 
-        ra_cent_off = self.ra_range[ra_ind]
-        dec_cent_off = self.dec_range[dec_ind]
+        xmesh, ymesh = meshgrid(arange(self.fits_data.len1),
+                                arange(self.fits_data.len2))
 
-        if self.fits_data.data_dims == 2:
-            self.ra_cent,self.dec_cent = self.fits_data.wcs.wcs_pix2world(ra_ind-self.edge_pad,dec_ind-self.edge_pad,0)
-        elif self.fits_data.data_dims == 3:
-            self.ra_cent,self.dec_cent = self.fits_data.wcs.wcs_pix2world(ra_ind-self.edge_pad,dec_ind-self.edge_pad,0,0)
-        elif self.fits_data.data_dims == 4:
-            self.ra_cent,self.dec_cent,_,_ = self.fits_data.wcs.wcs_pix2world(ra_ind-self.edge_pad,dec_ind-self.edge_pad,0,0,0)
+        xmesh = xmesh.flatten()[self.pixel_inds_to_use]
+        ymesh = ymesh.flatten()[self.pixel_inds_to_use]
 
-        self.ras = self.fits_data.ras - ra_cent_off
-        self.decs = self.fits_data.decs - dec_cent_off
+        # print(xmesh)
 
+        cent_pix_x = mean(xmesh) + 0.5
+        cent_pix_y = mean(ymesh) + 0.5
+
+        print(cent_pix_x, cent_pix_y)
+
+        ra_cent, dec_cent = self.fits_data.wcs.all_pix2world(cent_pix_x, cent_pix_y, 0)
+
+        ra_cent *= D2R
+        dec_cent *= D2R
+
+
+
+        # print('THIS', ra_cent, dec_cent)
+
+        # dec_cent_ind = int(floor(dec_cent_ind / self.fits_data.len1))
+        #
+        #
+        # fit_region_pix_xs = self.fits_data.ras[self.pixel_inds_to_use]
+        # fit_region_pix_ys = self.fits_data.decs[self.pixel_inds_to_use]
+
+        print('Centre pixel forced to be ra,dec',ra_cent/D2R,dec_cent/D2R)
+
+        self._set_central_pixel_to_zero(ra_cent, dec_cent)
+
+
+        # print(ra_cent, dec_cent)
+        #
+        # print(f"Setting the central ra,dec to {ra_cent}, {dec_cent} deg")
+        #
+        # print(f"mean coords {mean(self.fits_data.ras)} {mean(self.fits_data.decs)}")
+        #
+        # resolution = abs(self.fits_data.ras[1] - self.fits_data.ras[0])
+        # ##Find the difference between the gridded ra coords and the desired ra_cent
+        # ra_offs = np_abs(self.fits_data.ras - ra_cent)
+        # ##Find out where in the gridded ra coords the current ra_cent lives;
+        # ##This is a boolean array of length len(ra_offs)
+        # ra_true = ra_offs < resolution/2.0
+        # ##Find the index so we can access the correct entry in the container
+        # ra_ind = where(ra_true == True)[0]
+        #
+        # # print(resolution)
+        #
+        # ##Use the numpy abs because it's faster (np_abs)
+        # dec_offs = np_abs(self.fits_data.decs - dec_cent)
+        # dec_true = dec_offs < resolution/2.0
+        # dec_ind = where(dec_true == True)[0]
+        #
+        # ##If ra_ind,dec_ind coord sits directly between two grid points,
+        # ##just choose the first one
+        # if len(ra_ind) == 0:
+        #     ra_true = ra_offs < resolution
+        #     ra_ind = where(ra_true == True)[0]
+        # if len(dec_ind) == 0:
+        #     dec_true = dec_offs < resolution
+        #     dec_ind = where(dec_true == True)[0]
+        #
+        # # print(where(dec_true == True))
+        #
+        # ra_ind,dec_ind = ra_ind[0],dec_ind[0]
+        #
+        # ##Central dec index has multiple rows as it is from flattended coords,
+        # ##remove that here
+        # dec_ind = int(floor(dec_ind / self.fits_data.len1))
+        # print('Centre pixel forced to be x,y',ra_ind,dec_ind)
+
+
+
+
+
+        # self.ra_cent_ind = ra_ind
+        # self.dec_cent_ind = dec_ind
+
+        ##Set central ra, dec pixel to zero in prep for scaling to x,y coords
+        # self._set_central_pixel_to_zero(ra_cent, dec_cent)
+
+    def _set_central_pixel_to_zero(self, ra_cent, dec_cent):
+        """
+        Takes the self.ras, self.decs coord system and sets ra_cent, dec_cent = 0,0
+        """
+
+        print(f"Setting the central ra,dec to {ra_cent/D2R}, {dec_cent/D2R} deg")
+
+        self.ra_cent = ra_cent
+        self.dec_cent = dec_cent
+
+        self.ras = self.fits_data.ras - ra_cent
+        self.decs = self.fits_data.decs - dec_cent
+
+        ##Make things bound by -180 to 180 deg
+        self.ras[self.ras < -pi] += 2*pi
+        self.ras[self.ras > pi] -= 2*pi
+
+        plot_ras = deepcopy(self.ras)
+        plot_decs = deepcopy(self.decs)
+
+        plot_ras.shape = (self.fits_data.len1, self.fits_data.len2)
+        plot_decs.shape = (self.fits_data.len1, self.fits_data.len2)
+
+        # fig, axs = plt.subplots(1,2)
+        #
+        # im0 = axs[0].imshow(plot_ras*R2D, origin='lower')
+        # im1 = axs[1].imshow(plot_decs*R2D, origin='lower')
+        #
+        # from shamfi.shamfi_plotting import add_colourbar
+        #
+        # add_colourbar(im=im0, ax=axs[0], fig=fig)
+        # add_colourbar(im=im1, ax=axs[1], fig=fig)
+        #
+        # plt.tight_layout()
+        # fig.savefig("check_coords.png",bbox_inches='tight')
+        # plt.close()
+
+
+    def _set_given_radec_to_zero_pixel(self, ra_cent, dec_cent):
+        """Given an ra,dec (in radians), set this ra/dec to zero by subtracting
+        from self.ras, self.decs"""
+
+
+        self._set_central_pixel_to_zero(ra_cent, dec_cent)
+
+
+
+    def _get_lm(self, ra, ra0, dec, dec0):
+        '''Calculate l,m for a given phase centre ra0,dec0 and sky point ra,dec
+        Enter angles in radians'''
+
+        ##RTS way of doing it
+        cdec0 = cos(dec0)
+        sdec0 = sin(dec0)
+        cdec = cos(dec)
+        sdec = sin(dec)
+        cdra = cos(ra-ra0)
+        sdra = sin(ra-ra0)
+        l = cdec*sdra
+        m = sdec*cdec0 - cdec*sdec0*cdra
+        # n = sdec*sdec0 + cdec*cdec0*cdra
+
+        return l,m
 
 
     def radec2xy(self,b1,b2,crop=False):
@@ -288,11 +450,44 @@ class ShapeletCoords():
             x = -self.ras[self.pixel_inds_to_use]
             y = self.decs[self.pixel_inds_to_use]
 
+            # ra_max = x.max()
+            # ra_min = x.min()
+            #
+            # dec_max = y.max()
+            # dec_min = y.min()
+            #
+            # ##maximum coord of the shapelet basis functions
+            # XMAX = 250
+            # XSPAN = 2*XMAX
+            #
+            # xspan = (XSPAN*b1)/FWHM_factor
+            # yspan = (XSPAN*b2)/FWHM_factor
+            #
+            # print(f" + x span of basis functions is {xspan:.1f} arcmins ({xspan/60.0} deg)")
+            # print(f" + y span of basis functions is {xspan:.1f} arcmins ({xspan/60.0} deg)")
+            #
+            # ra_span = (ra_max - ra_min) * R2D
+            # dec_span = (dec_max - dec_min) * R2D
+            #
+            # print(f" + RA span of fitting region is {ra_span*60.0:.1f} arcmins ({ra_span} deg)")
+            # print(f" + Dec span of fitting region is {dec_span*60.0:.1f} arcmins ({dec_span} deg)")
+
         else:
             ##RA increases in opposite direction to x
             x = -self.ras
             y = self.decs
 
+
+        # x, y = self._get_lm(x, 0.0, y, 0.0)
+
+        # print(len(x), len(self.pixel_inds_to_use))
+
+
+        x, y = self._get_lm(x + self.ra_cent, self.ra_cent,
+                            y + self.dec_cent, self.dec_cent)
+
+
+        print(f"Rotating by position angle of {-self.pa/D2R}")
         ##Rotation is east from north, (positive RA is negative x)
         angle = -self.pa
 

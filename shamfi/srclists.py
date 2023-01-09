@@ -84,6 +84,21 @@ class Component_Info():
         self.major = None
         self.minor = None
         self.shapelet_coeffs = []
+        self.n1s = []
+        self.n2s = []
+        # self.shapelet_coeff_values = []
+        self.ra = None
+        self.dec = None
+        self.flux = None
+        self.freq = None
+        self.SI = -0.8
+
+    def calc_flux(self, freq):
+        """Return the flux of the component at the given frequency
+        by scaling via the spectral index"""
+
+        flux = self.flux * (freq/self.freq)**self.SI
+        return flux
 
 def get_RTS_sources(srclist, all_RTS_sources):
     """
@@ -343,3 +358,84 @@ def write_singleRTS_from_RTS_sources(RTS_sources,outname,name='combined_name'):
                     outfile.write('ENDCOMPONENT\n')
 
         outfile.write('ENDSOURCE')
+
+def read_woden_srclist(srclist):
+    """Reads in information from WODEN-type text srclist
+
+    Parameters
+    ----------
+    srclist : string
+        Path to a text file of a WODEN srclist
+
+    Return
+    ------
+    components: array of :class:`Component_Info`
+        An array containing `Component_Info` classes of all components in the
+        WODEN-style srclist
+
+
+    """
+
+    with open(srclist,'r') as srcfile:
+        source_chunks = srcfile.read().split('ENDSOURCE')
+        del source_chunks[-1]
+
+        # lines = source_src_info[0].split('\n')
+
+    components = []
+
+
+    for source_chunk in source_chunks:
+
+        comp_chunks = source_chunk.split('ENDCOMPONENT')
+
+        for comp_chunk in comp_chunks:
+
+            lines = comp_chunk.split('\n')
+
+            if lines == ['', '']:
+                pass
+            else:
+                component = Component_Info()
+
+                for line in lines:
+                    if 'COMPONENT' in line and 'END' not in line:
+                        _, comp_type, ra, dec = line.split()
+
+                        component.dec = float(dec)*D2R
+                        component.ra = float(ra)*15.0*D2R
+                        component.comp_type = comp_type
+
+
+                    elif 'SPARAMS' in line or 'GPARAMS' in line:
+                        _, pa, major, minor = line.split()
+
+                        component.pa = float(pa)*D2R
+                        component.major = float(major) * (D2R / 60.0)
+                        component.minor = float(minor) * (D2R / 60.0)
+
+                    elif 'SCOEFF' in line:
+                        _, n1, n2, coeff = line.split()
+
+                        component.n1s.append(float(n1))
+                        component.n2s.append(float(n2))
+                        component.shapelet_coeffs.append(float(coeff))
+
+                    elif 'FREQ' in line:
+                        _, freq, flux, _, _, _ = line.split()
+                        component.freq = float(freq)
+                        component.flux = float(flux)
+                    elif 'LINEAR' in line:
+                        _, freq, flux, _, _, _, SI = line.split()
+                        component.freq = float(freq)
+                        component.flux = float(flux)
+                        component.SI = float(SI)
+
+
+                component.n1s = np.array(component.n1s)
+                component.n2s = np.array(component.n2s)
+                component.shapelet_coeffs = np.array(component.shapelet_coeffs)
+
+                components.append(component)
+
+    return np.array(components)

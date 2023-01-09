@@ -1,6 +1,6 @@
 from __future__ import print_function,division
 from numpy import *
-from astropy.convolution import convolve
+from astropy.convolution import convolve, convolve_fft
 from progressbar import progressbar
 import pkg_resources
 from copy import deepcopy
@@ -10,6 +10,8 @@ from astropy.utils.exceptions import AstropyWarning
 from shamfi.git_helper import get_gitdict, write_git_header
 # from shamfi import shamfi_plotting
 from scipy.signal import fftconvolve
+import scipy
+# from numba import jit
 
 try:
     from scipy.special import factorial,eval_hermite
@@ -83,9 +85,21 @@ def gen_shape_basis_direct(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,c
     n1 = int(n1)
     n2 = int(n2)
 
+    # print("THIS THING",2**n1*factorial(n1))*sqrt(2**n2*factorial(n2))
+
     norm = 1.0 / (sqrt(2**n1*factorial(n1))*sqrt(2**n2*factorial(n2)))
+    # print("THE NORM INSIDE", norm)
     norm *= 1.0 / (b1 * b2)
     norm *= sqrt(pi) / 2
+
+    extra_norm = (2*sqrt(b1)*sqrt(b2)) / pi
+    # norm *= extra_norm
+
+
+    # norm_lower1 = sqrt(2**n1*sqrt(pi)*factorial(n1))*sqrt(b1)
+    # norm_lower2 = sqrt(2**n2*sqrt(pi)*factorial(n2))*sqrt(b2)
+    #
+    # norm = 1 / (norm_lower1*norm_lower2)
 
     if type(convolve_kern) == ndarray:
         this_xrot.shape = shape
@@ -104,9 +118,12 @@ def gen_shape_basis_direct(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,c
         h1 = eval_hermite(n1,this_xrot)
         h2 = eval_hermite(n2,this_yrot)
         basis = gauss*norm*h1*h2
+        # print("THE HERM", h1*h2)
 
     return basis
 
+# @profile
+# @jit
 def interp_basis(xrot=None,yrot=None,n1=None,n2=None):
     """
     Uses basis lookup tables to generate 2D shapelet basis function for given
@@ -156,7 +173,9 @@ def interp_basis(xrot=None,yrot=None,n1=None,n2=None):
 
     return x_val*y_val*gx_val*gy_val
 
-def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve_kern=False,shape=False):
+# @profile
+def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,
+                    convolve_kern=False, shape=False, pixel_mask=False):
     """
     Generates the shapelet basis function for given n1,n2,b1,b2 parameters, using
     lookup tables and interpolation, at the given coords xrot,yrot.
@@ -195,25 +214,79 @@ def gen_shape_basis(n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None,convolve
     norm = 1.0 / (b1 * b2)
     norm *= sqrt(pi) / 2
 
+    ##If pixel_mask is an array, use it to select the correct pixels
+    if type(pixel_mask) == ndarray:
+        pass
+    ##If not, generate a mask that just calls all the pixels
+    else:
+        pixel_mask = arange(len(xrot))
+
+    # if type(convolve_kern) == ndarray:
+    #     xrot.shape = shape
+    #     yrot.shape = shape
+    #     basis = interp_basis(xrot=xrot,yrot=yrot,n1=n1,n2=n2)
+    #     # basis = convolve(basis, convolve_kern) #, 'same')
+    #
+    #     basis = fftconvolve(basis, convolve_kern, 'same')
+    #
+    #     basis = basis.flatten()
+    #
+    #     xrot = xrot.flatten()
+    #     yrot = yrot.flatten()
+    #
+    # else:
+    #     basis = interp_basis(xrot=xrot,yrot=yrot,n1=n1,n2=n2)
+
     if type(convolve_kern) == ndarray:
-        xrot.shape = shape
-        yrot.shape = shape
-        basis = interp_basis(xrot=xrot,yrot=yrot,n1=n1,n2=n2)
-        # basis = convolve(basis, convolve_kern) #, 'same')
 
-        basis = fftconvolve(basis, convolve_kern, 'same')
+        ##Doing the basis function interpolation can be expensive, so
+        ##only do it for the pixels were are going to fit for
 
-        basis = basis.flatten()
+        basis = interp_basis(xrot=xrot[pixel_mask],
+                             yrot=yrot[pixel_mask],
+                             n1=n1,n2=n2)
 
-        xrot = xrot.flatten()
-        yrot = yrot.flatten()
+        ## We want to do a 2D convolution however, and everything here
+        ## is currently 1D. The pixels we want to fit aren't
+        ## necessarily in a nice grid though, so make a 2D array with
+        ## NaNs where ever a pixel has been masked, and use astropy
+        ## convolution which can deal with NaN pixels
+        basis_for_convolution = ones(len(xrot))*nan
+        ##Stick in the basis function date for pixels we have calculated
+        ##above
+        basis_for_convolution[pixel_mask] = basis
+
+        ##Make 2D
+        basis_for_convolution.shape = shape
+
+        ##Astropy spits out warnings about convolving with many nans
+        ##when we're fitting only portions of the box, so silence the
+        ##warnings here
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', AstropyWarning)
+            ##Convolve and flatten
+            basis_for_convolution = convolve(basis_for_convolution, convolve_kern)
+            # basis_for_convolution = convolve_fft(basis_for_convolution,convolve_kern)
+        basis_for_convolution = basis_for_convolution.flatten()
+        basis = basis_for_convolution[pixel_mask]
 
     else:
-        basis = interp_basis(xrot=xrot,yrot=yrot,n1=n1,n2=n2)
+        basis = interp_basis(xrot=xrot[pixel_mask],yrot=yrot[pixel_mask],
+                             n1=n1,n2=n2)
+
+    # the_thing = basis*norm
+
+    # if the_thing.min() < 1e-6 or the_thing.max() > 1e+6:
+    #     print('Things are massive mate', n1, n2)
+
+    # print('Min and Max of basis', n1, n2, the_thing.min(), the_thing.max())
 
     return basis*norm
 
-def gen_A_shape_matrix(n1s=None,n2s=None,xrot=None,yrot=None,nmax=None,b1=None,b2=None,convolve_kern=False,shape=False):
+# @profile
+def gen_A_shape_matrix(n1s=None, n2s=None, xrot=None, yrot=None,
+                       b1=None, b2=None, convolve_kern=False, shape=False,
+                       pixel_mask=False):
     """
     Generates the 'A' matrix in Ax = b when fitting shapelets, where:
 
@@ -241,6 +314,8 @@ def gen_A_shape_matrix(n1s=None,n2s=None,xrot=None,yrot=None,nmax=None,b1=None,b
         A kernel to convolve the basis functions with - if modelling a CLEANed image this should be the restoring beam
     shape : tuple
         The 2D shape of the image being modelled, needed if convolving with a kernel
+    pixel_mask : array
+        Array of pixel indexes to use in the fitting
 
     Returns
     -------
@@ -253,9 +328,22 @@ def gen_A_shape_matrix(n1s=None,n2s=None,xrot=None,yrot=None,nmax=None,b1=None,b
 
     """
 
-    A_shape_basis = zeros((len(xrot),len(n1s)))
+    ##If pixel_mask is an array, use it to select the correct pixels
+    if type(pixel_mask) == ndarray:
+        pass
+    ##If not, generate a mask that just calls all the pixels
+    else:
+        pixel_mask = arange(len(xrot))
+
+    ##A_matrix only needs to be as big as the pixels we are actually fitting
+    A_shape_basis = zeros((len(pixel_mask),len(n1s)))
     for index,n1 in enumerate(n1s):
-        A_shape_basis[:,index] = gen_shape_basis(n1=n1,n2=n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2,convolve_kern=convolve_kern,shape=shape)
+        A_shape_basis[:,index] = gen_shape_basis(n1=n1, n2=n2s[index],
+                                                xrot=xrot, yrot=yrot,
+                                                b1=b1, b2=b2,
+                                                convolve_kern=convolve_kern,
+                                                shape=shape,
+                                                pixel_mask=pixel_mask)
         ##TODO can check quality of generated basis functions here and remove if necessary
 
     return n1s, n2s, A_shape_basis
@@ -358,7 +446,7 @@ class FitShapelets():
         ##is set to use all pixels if negative pixels are to be fit.
         self.data_to_fit = self.data_to_fit[shpcoord.negative_pix_mask]
 
-
+    # @profile
     def do_grid_search_fit(self, b1_grid, b2_grid, nmax,
                            pa=False, convolve_kern=False,
                            save_FITS=True, save_tag='shapelet'):
@@ -464,10 +552,23 @@ class FitShapelets():
         ##Transform ra,dec to shapelet basis function coords by scaling by b1,b2
         xrot,yrot = self.shpcoord.radec2xy(b1, b2, crop=False)
 
+        ##CHANGE CHANGE CHANGE
         ##Generate the basis functions inside the design matrix used to setup
         ##linear equations
-        checked_n1s, checked_n2s, A_shape_basis = self._gen_A_shape_matrix(xrot=xrot, yrot=yrot,
-                                  b1=b1, b2=b2)
+        # checked_n1s, checked_n2s, A_shape_basis = self._gen_A_shape_matrix(xrot=xrot, yrot=yrot,
+        #                           b1=b1, b2=b2)
+
+        # checked_n1s, checked_n2s, A_shape_basis = gen_A_shape_matrix_direct(self.n1s, self.n2s,
+        #                                             xrot, yrot, b1, b2,
+        #                                             self.convolve_kern,
+        #                                             self.fits_data.data.shape)
+
+
+        checked_n1s, checked_n2s, A_shape_basis = gen_A_shape_matrix(n1s=self.n1s,
+                               n2s=self.n2s, xrot=xrot, yrot=yrot,
+                               b1=b1, b2=b2, convolve_kern=self.convolve_kern,
+                               shape=self.fits_data.data.shape,
+                               pixel_mask=self.shpcoord.pixel_inds_to_use)
 
         ##Cut out any negative pixels from the fit if required
         A_shape_basis_fit = A_shape_basis[self.shpcoord.negative_pix_mask,:]
@@ -488,74 +589,40 @@ class FitShapelets():
         self.checked_n2s_dict['%03d%03d' %(b1_ind,b2_ind)] = checked_n2s
 
 
-    def _gen_A_shape_matrix(self,xrot=None,yrot=None,b1=None,b2=None):
-        '''Setup the A matrix used in the linear least squares fit of the basis functions. Works out all
-        valid n1,n2 combinations up to nmax'''
+    # def _gen_A_shape_matrix(self,xrot=None,yrot=None,b1=None,b2=None):
+    #     '''Setup the A matrix used in the linear least squares fit of the basis functions. Works out all
+    #     valid n1,n2 combinations up to nmax'''
+    #
+    #     ##Make a design matrix array. We will crop out unnecessary pixels when generating
+    #     ##basis functions so only make it the size of shpcoord.pixel_inds_to_use
+    #     A_shape_basis = zeros((len(self.shpcoord.pixel_inds_to_use),len(self.n1s)))
+    #     for index,n1 in enumerate(self.n1s):
+    #         A_shape_basis[:,index] = self._gen_shape_basis(n1=n1,n2=self.n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)
+    #
+    #         ##TODO can check quality of generated basis functions here and remove if necessary
+    #
+    #     return self.n1s, self.n2s, A_shape_basis
 
-        ##Make a design matrix array. We will crop out unnecessary pixels when generating
-        ##basis functions so only make it the size of shpcoord.pixel_inds_to_use
-        A_shape_basis = zeros((len(self.shpcoord.pixel_inds_to_use),len(self.n1s)))
-        for index,n1 in enumerate(self.n1s):
-            A_shape_basis[:,index] = self._gen_shape_basis(n1=n1,n2=self.n2s[index],xrot=xrot,yrot=yrot,b1=b1,b2=b2)
+    # def _gen_shape_basis(self,n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None):
+    #     '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
+    #     using lookup tables, at the given coords xrot,yrot
+    #     b1,b2 should be in radians'''
+    #
+    #     convolve_kern=self.convolve_kern
+    #     shape=self.fits_data.data.shape
+    #
+    #     ##Ensure n1,n2 are ints
+    #     n1 = int(n1)
+    #     n2 = int(n2)
+    #
+    #     basis = gen_shape_basis(n1=n1, n2=n2, xrot=xrot, yrot=yrot, b1=b1, b2=b2,
+    #                     convolve_kern=convolve_kern, shape=shape,
+    #                     pixel_mask=self.shpcoord.pixel_inds_to_use)
+    #
+    #
+    #     return basis
 
-            ##TODO can check quality of generated basis functions here and remove if necessary
-
-        return self.n1s, self.n2s, A_shape_basis
-
-    def _gen_shape_basis(self,n1=None,n2=None,xrot=None,yrot=None,b1=None,b2=None):
-        '''Generates the shapelet basis function for given n1,n2,b1,b2 parameters,
-        using lookup tables, at the given coords xrot,yrot
-        b1,b2 should be in radians'''
-
-        convolve_kern=self.convolve_kern
-        shape=self.fits_data.data.shape
-
-        ##Ensure n1,n2 are ints
-        n1 = int(n1)
-        n2 = int(n2)
-
-        ##Calculate the normalisation
-        norm = 1.0 / (b1 * b2)
-        norm *= sqrt(pi) / 2
-
-        if type(convolve_kern) == ndarray:
-
-            ##Doing the basis function interpolation can be expensive, so
-            ##only do it for the pixels were are going to fit for
-
-            basis = interp_basis(xrot=xrot[self.shpcoord.pixel_inds_to_use],
-                                 yrot=yrot[self.shpcoord.pixel_inds_to_use],
-                                 n1=n1,n2=n2)
-
-            ## We want to do a 2D convolution however, and everything here
-            ## is currently 1D. The pixels we want to fit aren't
-            ## necessarily in a nice grid though, so make a 2D array with
-            ## NaNs where ever a pixel has been masked, and use astropy
-            ## convolution which can deal with NaN pixels
-            basis_for_convolution = ones(len(self.fits_data.flat_data))*nan
-            ##Stick in the basis function date for pixels we have calculated
-            ##above
-            basis_for_convolution[self.shpcoord.pixel_inds_to_use] = basis
-
-            ##Make 2D
-            basis_for_convolution.shape = self.fits_data.data.shape
-
-            ##Astropy spits out warnings about convolving with many nans
-            ##when we're fitting only portions of the box, so silence the
-            ##warnings here
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', AstropyWarning)
-                ##Convolve and flatten
-                basis_for_convolution = convolve(basis_for_convolution,convolve_kern)
-            basis_for_convolution = basis_for_convolution.flatten()
-            basis = basis_for_convolution[self.shpcoord.pixel_inds_to_use]
-
-        else:
-            basis = interp_basis(xrot=xrot,yrot=yrot,n1=n1,n2=n2)
-
-        return basis*norm
-
-
+    # @profile
     def _gen_full_model(self):
         '''Use the best fit coeffs to generate a model image that covers the
         full image area'''
@@ -590,6 +657,10 @@ class FitShapelets():
 
         ##Do the fitting
         shape_coeffs,resid,rank,s = linalg.lstsq(A_shape_basis,flat_data,rcond=None)
+
+        ##Do the fitting
+        # shape_coeffs,resid,rank,s = scipy.linalg.lstsq(A_shape_basis,flat_data)
+        # lapack_driver='gelsy'
 
         ##Revert back to original shape
         flat_data.shape = current_shape
@@ -672,7 +743,7 @@ class FitShapelets():
 
             hdu.writeto('shamfi_%s_nmax%03d_p%03d.fits' %(save_tag,self.nmax,int(self.model_percentage)), overwrite=True)
 
-    def save_srclist(self, save_tag='shapelet', rts_srclist=True, woden_srclist=True):
+    def save_srclist(self, save_tag='shapelet', rts_srclist=True, woden_srclist=True, norm_convo=False):
         """
         Uses the best fitted parameters and creates an RTS/WODEN style
         srclist with them, saved as text files
@@ -685,6 +756,9 @@ class FitShapelets():
             If True, save a sky model compatible with the RTS (Mitchell et al, 2008)
         woden_srclist : bool
             If True, save a sky model compatible with WODEN (Line et al, 2020)
+        norm_convo : bool
+            If True, apply a further normalisation so that this model can be
+            normed during a uv-space based convolution of two shapelet models
 
         """
 
@@ -696,6 +770,14 @@ class FitShapelets():
         ##flux density we get the correct answer
         scale = 1 / (self.fits_data.pix_area_rad*all_flux)
 
+        if norm_convo:
+            print(f"Applying extra normalisation for convolution {self.fit_data.max()} {self.fits_data.solid_beam} {self.fits_data.pix_area_rad}")
+            # scale *= self.fits_data.solid_beam / self.fit_data.max()
+            scale *= self.fits_data.pix_area_rad
+
+            self.fitted_coeffs *= all_flux
+            all_flux = 1.0
+
         ##Scale to arcmin or deg
         major, minor = (self.best_b1 / D2R)*60, (self.best_b2 / D2R)*60
         pa = self.shpcoord.pa / D2R
@@ -703,12 +785,12 @@ class FitShapelets():
         if rts_srclist:
             with open('srclist-rts_%s_nmax%03d_p%03d.txt' %(save_tag,self.nmax,int(self.model_percentage)),'w+') as outfile:
                 write_git_header(outfile)
-                outfile.write('SOURCE %s %.6f %.6f\n' %(save_tag[:16],self.shpcoord.ra_cent/15.0,self.shpcoord.dec_cent))
+                outfile.write('SOURCE %s %.10f %.10f\n' %(save_tag[:16],self.shpcoord.ra_cent*(R2D/15.0),self.shpcoord.dec_cent*R2D))
                 outfile.write("FREQ %.5e %.5f 0 0 0\n" %(self.fits_data.freq,all_flux))
                 outfile.write("SHAPELET2 %.8f %.8f %.8f\n" %(pa,major,minor))
 
                 for index,coeff in enumerate(self.fitted_coeffs):
-                    outfile.write("COEFF %.1f %.1f %.12f\n" %(self.fit_n1s[index],self.fit_n2s[index],coeff * scale))
+                    outfile.write("COEFF %.1f %.1f %.2f\n" %(self.fit_n1s[index],self.fit_n2s[index],coeff * scale))
 
                 outfile.write('ENDSOURCE\n')
 
@@ -716,12 +798,12 @@ class FitShapelets():
             with open('srclist-woden_%s_nmax%03d_p%03d.txt' %(save_tag,self.nmax,int(self.model_percentage)),'w+') as outfile:
                 write_git_header(outfile)
                 outfile.write('SOURCE %s P 0 G 0 S 1 %d\n' %(save_tag,len(self.fitted_coeffs)))
-                outfile.write('COMPONENT SHAPELET %.6f %.6f\n' %(self.shpcoord.ra_cent/15.0,self.shpcoord.dec_cent))
+                outfile.write('COMPONENT SHAPELET %.10f %.10f\n' %(self.shpcoord.ra_cent*(R2D/15.0),self.shpcoord.dec_cent*R2D))
                 outfile.write("FREQ %.5e %.5f 0 0 0\n" %(self.fits_data.freq,all_flux))
                 outfile.write("SPARAMS %.8f %.8f %.8f\n" %(pa,major,minor))
 
                 for index,coeff in enumerate(self.fitted_coeffs):
-                    outfile.write("SCOEFF %.1f %.1f %.12f\n" %(self.fit_n1s[index],self.fit_n2s[index],coeff * scale))
+                    outfile.write("SCOEFF %.1f %.1f %.20f\n" %(self.fit_n1s[index],self.fit_n2s[index],coeff * scale))
                 outfile.write('ENDCOMPONENT\n')
                 outfile.write('ENDSOURCE\n')
 
@@ -736,7 +818,13 @@ class FitShapelets():
         :ivar array sums_order: an array of the argsorted index of the sums of the flux of each basis function
         """
         xrot,yrot = self.shpcoord.radec2xy(self.best_b1, self.best_b2, crop=False)
-        _, _, A_shape_basis = self._gen_A_shape_matrix(xrot=xrot,yrot=yrot,b1=self.best_b1,b2=self.best_b2)
+        # _, _, A_shape_basis = self._gen_A_shape_matrix(xrot=xrot,yrot=yrot,b1=self.best_b1,b2=self.best_b2)
+        _, _, A_shape_basis = gen_A_shape_matrix(n1s=self.n1s,
+                           n2s=self.n2s, xrot=xrot, yrot=yrot,
+                           b1=self.best_b1, b2=self.best_b2, convolve_kern=self.convolve_kern,
+                           shape=self.fits_data.data.shape)
+                           # pixel_mask=self.shpcoord.pixel_inds_to_use)
+
         ##Sort the basis functions by highest absolute flux contribution to the model
         self._order_basis_by_flux(A_shape_basis)
 
