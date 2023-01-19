@@ -1,5 +1,5 @@
 from __future__ import print_function,division
-from numpy import *
+# from numpy import *
 from numpy import abs as np_abs
 from astropy.wcs import WCS
 from sys import exit
@@ -10,15 +10,18 @@ import os
 from subprocess import check_output
 import pkg_resources
 from shamfi.git_helper import get_gitdict, write_git_header
+import numpy as np
 
 ##convert between FWHM and std dev for the gaussian function
-factor = 2. * sqrt(2.*log(2.))
+factor = 2. * np.sqrt(2.*np.log(2.))
 
 ##converts between FWHM and std dev for the RTS
-rts_factor = sqrt(pi**2 / (2.*log(2.)))
+rts_factor = np.sqrt(np.pi**2 / (2.*np.log(2.)))
 
 ##Use package manager to get hold of the basis functions
 basis_path = pkg_resources.resource_filename("shamfi", "image_shapelet_basis.npz")
+
+D2R = np.pi / 180.0
 
 def check_rts_or_woden_get_lines(filename):
     """
@@ -79,6 +82,7 @@ class Component_Info():
     :ivar list shapelet_coeffs: List to contain lists of shapelet coeffs if the source is a SHAPELET
     """
     def __init__(self):
+        self.source_name = None
         self.comp_type = None
         self.pa = None
         self.major = None
@@ -91,6 +95,14 @@ class Component_Info():
         self.dec = None
         self.flux = None
         self.freq = None
+        
+        self.fluxes = []
+        self.freqs = []
+        
+        self.flux_type = None
+        
+        self.curve_q = None
+        
         self.SI = -0.8
 
     def calc_flux(self, freq):
@@ -146,7 +158,7 @@ def get_RTS_sources(srclist, all_RTS_sources):
             ##Split all info into lines and get rid of blank entries
             lines = source_info.split('\n')
             lines = [line for line in lines if line!='' and '#' not in line]
-            ##If there are components to the source, see where the components start and end
+            ##If there are components to the source, see np.where the components start and end
             comp_starts = [i for i in range(len(lines)) if 'COMPONENT' in lines[i] and 'END' not in lines[i]]
             comp_ends = [i for i in range(len(lines)) if lines[i]=='ENDCOMPONENT']
 
@@ -279,11 +291,11 @@ def write_woden_from_RTS_sources(RTS_sources,outname):
             all_comp_types.append(comp.comp_type)
             all_shape_coeffs += len(comp.shapelet_coeffs)
 
-    all_comp_types = array(all_comp_types)
+    all_comp_types = np.array(all_comp_types)
 
-    num_point = len(where(all_comp_types == 'POINT')[0])
-    num_gauss = len(where(all_comp_types == 'GAUSSIAN')[0])
-    num_shape = len(where(all_comp_types == 'SHAPELET')[0])
+    num_point = len(np.where(all_comp_types == 'POINT')[0])
+    num_gauss = len(np.where(all_comp_types == 'GAUSSIAN')[0])
+    num_shape = len(np.where(all_comp_types == 'SHAPELET')[0])
 
     with open(outname,'w+') as outfile:
         write_git_header(outfile)
@@ -369,8 +381,8 @@ def read_woden_srclist(srclist):
 
     Return
     ------
-    components: array of :class:`Component_Info`
-        An array containing `Component_Info` classes of all components in the
+    components: np.array of :class:`Component_Info`
+        An np.array containing `Component_Info` classes of all components in the
         WODEN-style srclist
 
 
@@ -439,3 +451,233 @@ def read_woden_srclist(srclist):
                 components.append(component)
 
     return np.array(components)
+
+
+def read_hyperdrive_srclist(srclist):
+    """Reads in sources from a hyperdrive srclist and returns """
+
+    with open(srclist) as file:
+
+        # current_source = 0
+
+        components = []
+        sources = []
+
+        component = False
+        source_name = False
+        current_source = 0
+
+        source_indexes = []
+        
+        freq_count = 0
+        freq_indent = 0
+
+        for line in file:
+            if line != '---\n' and '#' not in line and line != ''  and line != ' ' and line != '\n':
+
+                if line[0] != ' ':
+                    # print(current_source)
+                    source_name = line[:-2]
+                    current_source += 1
+
+                elif 'ra:' in line:
+
+                    ##ra should be the first thing in a component, so we need
+                    ##to append all the previously found values and reset the
+                    ##counters
+
+                    ##If a previous component exists, append in to the list
+                    ##of all components, and then make a new one
+                    if component:
+                        ##Make some things into np.arrays so we can maths them
+                        component.n1s = np.array(component.n1s)
+                        component.n2s = np.array(component.n2s)
+                        component.shapelet_coeffs = np.array(component.shapelet_coeffs)
+                        components.append(component)
+
+                    component = Component_Info()
+                    freq_count = 0
+                    
+                    component.source_name = source_name
+                    component.ra = float(line.split()[-1])*D2R
+
+                    # print(component.ra)
+                    source_indexes.append(current_source)
+
+                elif 'dec:' in line:
+                    component.dec = float(line.split()[-1])*D2R
+
+                elif 'comp_type: point' in line:
+                    component.comp_type = 'POINT'
+                elif 'gaussian:' in line:
+                    component.comp_type = 'GAUSSIAN'
+                elif 'shapelet:' in line:
+                    component.comp_type = 'SHAPELET'
+                    
+                elif "maj:" in line:
+                    component.major = float(line.split()[-1])*(D2R / 3600.0)
+                elif "min:" in line:
+                    component.minor = float(line.split()[-1])*(D2R / 3600.0)
+                elif "pa:" in line:
+                    component.pa = float(line.split()[-1])*D2R
+
+                elif 'n1:' in line:
+                    component.n1s.append(float(line.split()[-1]))
+                elif 'n2:' in line:
+                    component.n2s.append(float(line.split()[-1]))
+                elif 'value:' in line:
+                    component.shapelet_coeffs.append(float(line.split()[-1]))
+                    
+                elif 'power_law:' in line:
+                    component.flux_type = 'POWER'
+                elif 'curved_power_law:' in line:
+                    component.flux_type = 'CURVE'
+                    ##TODO read in curved stuff properly
+                    
+                elif 'si:' in line:
+                    component.SI = float(line.split()[-1])
+                    
+                elif 'list:' in line:
+                    component.flux_type = 'LIST'
+
+                elif 'freq:' in line:
+                    freq_count += 1
+                    component.freqs.append(float(line.split()[-1]))
+                    
+                    ##Stick in an empty np.array for Stokes I,Q,U,V
+                    component.fluxes.append(np.array([0.0, 0.0, 0.0, 0.0]))
+                    
+                    ##See what indent this freq entry starts at - used to
+                    ##line up following freq entries, as `q` can either mean
+                    ##stokes Q or q curvature param
+                    freq_indent = line.index('f')
+                    
+                    
+                elif ' i:' in line:
+                    component.fluxes[freq_count - 1][0] = float(line.split()[-1])
+                    
+                ##Gotta be fancy here to work out if this is a Stokes Q or a 
+                ##curved power law 'q' param
+                elif ' q:' in line:
+                    q = float(line.split()[-1])
+                    if line.index('q') == freq_indent:
+                        component.fluxes[freq_count - 1][1] = q
+                    else:
+                        if component.flux_type == 'CURVE':
+                            component.curve_q = q
+                            
+                elif ' u:' in line:
+                    component.fluxes[freq_count - 1][2] = float(line.split()[-1])
+                    
+                elif ' v:' in line:
+                    component.fluxes[freq_count - 1][3] = float(line.split()[-1])
+                    
+    return np.array(components)
+
+def extrapolate_component_flux(component : Component_Info, extrap_freqs):
+    """Extrapolate the fluxe to a given frequency. Currently just does
+    Stokes I, can be expanded to do Q,U,V as well"""
+    
+    extrap_stokesI = False
+    
+    if type(extrap_freqs) == float:
+        extrap_freqs = np.array([extrap_freqs])
+        
+    if component.flux_type == 'POWER':
+
+        flux_ratio = (extrap_freqs / component.freqs[0])**component.SI
+
+        extrap_stokesI = component.fluxes[0][0]*flux_ratio
+        extrap_stokesQ = component.fluxes[0][1]*flux_ratio
+        extrap_stokesU = component.fluxes[0][2]*flux_ratio
+        extrap_stokesV = component.fluxes[0][3]*flux_ratio
+
+
+    elif component.flux_type == 'CURVE':
+        q = component.curve_q
+        
+        si_ratio = (extrap_freqs / component.freqs[0])**component.SI
+
+        exp_ratio = np.exp(q*np.log(extrap_freqs)**2) / np.exp(q*np.log(component.freqs[0])**2)
+
+        extrap_stokesI = component.fluxes[0][0]*exp_ratio
+        extrap_stokesQ = component.fluxes[0][1]*exp_ratio
+        extrap_stokesU = component.fluxes[0][2]*exp_ratio
+        extrap_stokesV = component.fluxes[0][3]*exp_ratio
+
+
+
+    elif component.flux_type == 'LIST':
+        
+        extrap_stokesI = np.empty(len(extrap_freqs))
+        all_fluxes = np.array(component.fluxes)
+        ref_freqs = component.freqs
+        
+        ##just use stokes I
+        ref_fluxes = all_fluxes[:, 0]
+        
+        for find, extrap_freq in enumerate(extrap_freqs):
+            ##If there is only one freq entry, use power law model
+            if len(ref_freqs) == 1:
+                
+                flux_ratio = (extrap_freq / ref_freqs[0])**component.SI
+                extrap_stokesI[find] = ref_fluxes[0]*flux_ratio
+            else:
+
+                # ##Happen to be extrapolating to a reference frequency
+                if extrap_freq in ref_freqs:
+                    extrap_flux = ref_fluxes[np.where(ref_freqs == extrap_freq)][0]
+                else:
+
+                    freq_diffs = ref_freqs - extrap_freq
+
+                    low_ind_1 = -1.0
+
+                    low_val_1 = 1e16
+                    # low_val_2 = 1e16
+
+                    for ind in np.arange(len(ref_freqs)):
+                        abs_diff = abs(freq_diffs[ind])
+
+                        if abs_diff < low_val_1:
+                            low_val_1 = abs_diff
+                            low_ind_1 = ind
+
+                    ##Closest frequency is the lowest
+                    if low_ind_1 == 0:
+                        low_ind_2 = 1
+                    ##Closest frequency is the highest
+                    elif low_ind_1 == len(ref_freqs) - 1:
+                        low_ind_2 = low_ind_1 - 1
+                    ##otherwise, choose either above or below
+                    else:
+                        ##closest freq is higher than desired
+                        if ref_freqs[low_ind_1] > extrap_freq:
+                            low_ind_2 = low_ind_1 - 1
+                        else:
+                            low_ind_2 = low_ind_1 + 1
+
+                    if ref_fluxes[low_ind_1] <= 0 or ref_fluxes[low_ind_2] <= 0:
+
+                        gradient = (ref_fluxes[low_ind_2] - ref_fluxes[low_ind_1]) / (ref_freqs[low_ind_2] - ref_freqs[low_ind_1])
+                        extrap_flux =  ref_fluxes[low_ind_1] + gradient*(extrap_freq - ref_freqs[low_ind_1])
+
+                    else:
+
+                        flux1 = np.log10(ref_fluxes[low_ind_1])
+                        flux2 = np.log10(ref_fluxes[low_ind_2])
+                        freq1 = np.log10(ref_freqs[low_ind_1])
+                        freq2 = np.log10(ref_freqs[low_ind_2])
+                        extrap_freq = np.log10(extrap_freq)
+
+                        gradient = (flux2 - flux1) / (freq2 - freq1)
+                        extrap_flux =  flux1 + gradient*(extrap_freq - freq1)
+
+                        extrap_flux = 10**extrap_flux
+                
+                    extrap_stokesI[find] = extrap_flux
+
+    if len(extrap_stokesI) == 1:
+        extrap_stokesI = extrap_stokesI[0]
+
+    return extrap_stokesI

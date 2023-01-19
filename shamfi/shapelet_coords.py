@@ -110,7 +110,7 @@ class ShapeletCoords():
                     pixel_inds_to_use.append(y*self.fits_data.len1 + x)
 
             self.pixel_inds_to_use = array(pixel_inds_to_use)
-            print('Will fit box defined by low_x,high_x,low_y,high_y: ',low_x,high_x,low_y,high_y)
+            # print('Will fit box defined by low_x,high_x,low_y,high_y: ',low_x,high_x,low_y,high_y)
             # print("JUST DONE CALC", len(pixel_inds_to_use))
 
         else:
@@ -146,7 +146,7 @@ class ShapeletCoords():
             fluxes = self.fits_data.flat_data[self.pixel_inds_to_use]
             self.negative_pix_mask = where(fluxes >= 0.0)[0]
         else:
-            print('Will include negative pixels in fit')
+            # print('Will include negative pixels in fit')
             self.negative_pix_mask = arange(len(self.pixel_inds_to_use))
 
         self._find_image_centre_celestial()
@@ -369,7 +369,7 @@ class ShapeletCoords():
         Takes the self.ras, self.decs coord system and sets ra_cent, dec_cent = 0,0
         """
 
-        print(f"Setting the central ra,dec to {ra_cent/D2R}, {dec_cent/D2R} deg")
+        # print(f"Setting the central ra,dec to {ra_cent/D2R}, {dec_cent/D2R} deg")
 
         self.ra_cent = ra_cent
         self.dec_cent = dec_cent
@@ -487,7 +487,7 @@ class ShapeletCoords():
                             y + self.dec_cent, self.dec_cent)
 
 
-        print(f"Rotating by position angle of {-self.pa/D2R}")
+        # print(f"Rotating by position angle of {-self.pa/D2R}")
         ##Rotation is east from north, (positive RA is negative x)
         angle = -self.pa
 
