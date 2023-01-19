@@ -675,7 +675,7 @@ def extrapolate_component_flux(component : Component_Info, extrap_freqs):
 
                         extrap_flux = 10**extrap_flux
                 
-                    extrap_stokesI[find] = extrap_flux
+                extrap_stokesI[find] = extrap_flux
 
     if len(extrap_stokesI) == 1:
         extrap_stokesI = extrap_stokesI[0]
